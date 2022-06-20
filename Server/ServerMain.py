@@ -1,10 +1,16 @@
-import socket, threading, pickle
+import socket, pickle, random
 
 # import Game
-# from Session import PlayerSession
 
 HEADER_LEN_SIZE = 8
 HEADER_COMMAND_SIZE = 32
+HEADER_ID_SIZE = 8
+
+ID = int
+
+class ConnectedPlayer:
+    def __init__(self, id):
+        self.id = id
 
 class Server:
     def __init__(self, addr):
@@ -12,8 +18,7 @@ class Server:
         self.serverSocket.bind(addr)
         self.serverSocket.listen()
 
-        # self.activeGames = []
-        # self.unpairedPlayers : list[PlayerSession] = []
+        self.connectedPlayers: dict[ID, ConnectedPlayer] = dict()
 
     @ staticmethod
     def recvBytes(conn, numBytes):
@@ -22,53 +27,76 @@ class Server:
             res += conn.recv(min(2048, numBytes-len(res)))
         return res
 
-    def constructHeader(self, msgLen, command) -> bytearray:
+    def constructHeader(self, msgLen, id, command) -> bytearray:
         byteArr = bytearray(msgLen.to_bytes(8, byteorder='big'))
+        byteArr.extend(id.to_bytes(8, byteorder='big'))
         byteArr.extend(command.encode('utf-8'))
-        assert len(byteArr) <= HEADER_COMMAND_SIZE+HEADER_LEN_SIZE, f'Command is too big to fit in the header, it\'s size is {len(byteArr)} bytes'
-        byteArr += bytes(HEADER_COMMAND_SIZE+HEADER_LEN_SIZE - len(byteArr))
+        assert len(byteArr) <= HEADER_COMMAND_SIZE+HEADER_LEN_SIZE+HEADER_ID_SIZE, f'Command is too big to fit in the header, it\'s size is {len(byteArr)} bytes'
+        byteArr += bytes(HEADER_COMMAND_SIZE+HEADER_LEN_SIZE+HEADER_ID_SIZE - len(byteArr))
         return byteArr
-    def send(self, conn, command, payload=None):
+    def send(self, conn, id, command, payload=None):
         msg = pickle.dumps(payload)
-        byteArr = self.constructHeader(len(msg), command)
+        byteArr = self.constructHeader(len(msg), id, command)
         byteArr.extend(msg)
         conn.sendall(byteArr)
         conn.shutdown(socket.SHUT_RDWR)
         # TODO: close?
+
+    def handleQuery(self, conn: socket.socket):
+        header = conn.recv(HEADER_LEN_SIZE+HEADER_ID_SIZE+HEADER_COMMAND_SIZE)
+        payloadLen = int.from_bytes(header[:HEADER_LEN_SIZE], byteorder='big')
+
+        id = int.from_bytes(header[HEADER_LEN_SIZE:HEADER_LEN_SIZE+HEADER_ID_SIZE], byteorder='big')
+
+        command = header[HEADER_LEN_SIZE+HEADER_ID_SIZE:HEADER_LEN_SIZE+HEADER_ID_SIZE+HEADER_COMMAND_SIZE]
+        command = command.rstrip(bytes(1)).decode('utf-8')
+
+        payload = self.recvBytes(conn, payloadLen)
+        payload = pickle.loads(payload)
+
+        print(f'[DEBUG] id {id} command {command}\npayload {payload}')
+        
+        if command == '!CONNECT' and payload == None:
+            print('[INFO] connecting new player', conn.getpeername())
+            player = self.newConnectedPlayer()
+            self.connectedPlayers[player.id] = player
+            self.send(conn, id, '!CONNECTED', player.id)
+            
+        elif command == '!CONNECTION_CHECK' and payload == None:
+            self.send(conn, id, '!CONNECTION_CHECK_RES')
+        elif command == '!DISCONNECT' and payload == None:
+            self.send(conn, id, '!DISCONNECT')
+            exit(1)
+        else:
+            print(f'[ERROR] {command}: {payload}')
+            assert False, 'unreachable'
     
     def loop(self):
         while True:
             conn, addr = self.serverSocket.accept()
-            print(f'[INFO] got connection from {addr}')
-            header = conn.recv(HEADER_LEN_SIZE+HEADER_COMMAND_SIZE)
-            payloadLen = int.from_bytes(header[:HEADER_LEN_SIZE], byteorder='big')
+            print(f'[INFO] got query from {addr}')
+            self.handleQuery(conn)
 
-            command = header[HEADER_LEN_SIZE:HEADER_LEN_SIZE+HEADER_COMMAND_SIZE]
-            command = command.rstrip(bytes(1)).decode('utf-8')
+    def newConnectedPlayer(self):
+        id = self.generateNewID()
+        return ConnectedPlayer(id)
 
-            payload = self.recvBytes(conn, payloadLen)
-            payload = pickle.loads(payload)
-            
-            if command == '!CONNECTION_CHECK' and payload == None:
-                self.send(conn, '!CONNECTION_CHECK_RES')
-            else:
-                print(f'[INFO] {command}: {payload}')
-                assert False, 'unreachable'
-            
-            # self.acceptConn(conn, addr)
-            # self.pairPlayers()
-    
-    # def acceptConn(self, conn, addr):
-    #     player = PlayerSession(conn, addr)
-    #     print('player connected', player.getAddrStr())
-    #     self.unpairedPlayers.append(player)
-    #     # TODO: send connection response
+    def generateNewID(self):
+        bounds = (1000, 2**20)
+        id = random.randint(*bounds)
+        while id in self.connectedPlayers:
+            id = random.randint(*bounds)
+        return id
+    def connectPlayer(self, conn, addr):
+        player = self.newConnectedPlayer()
+        print('new player connected', player.id, 'from', *conn.getpeername())
+        # TODO: send connection response
         
 
-    # def pairPlayers(self):
-    #     while len(self.unpairedPlayers) >= 2:
-    #         players = [self.unpairedPlayers.pop() for _ in range(2)]
-    #         self.startGameSession(players)
+    def pairPlayers(self):
+        while len(self.connectedPlayers) >= 2:
+            players = [self.connectedPlayers.pop() for _ in range(2)]
+            # self.startGameSession(players)
 
     # def startGameSession(self, players):
     #     gameObj = Game.Game(players)
