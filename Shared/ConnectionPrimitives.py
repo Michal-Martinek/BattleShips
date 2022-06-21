@@ -6,6 +6,7 @@ MSGLEN_SIZE = 8
 
 def send(conn: socket.socket, id: int, command: str, payload: dict={}):
     assert isinstance(payload, dict)
+    print(f'[DEBUG] sending req: id {id}, command {command} payload {payload}')
     msg = {
         'id': id, 
         'command': command, 
@@ -24,7 +25,9 @@ def recv(conn: socket.socket) -> tuple[int, str, dict]:
     response = json.loads(response)
 
     conn.shutdown(socket.SHUT_RD)
-    return [response[x] for x in ['id', 'command', 'payload']]
+    id, command, payload = [response[x] for x in ['id', 'command', 'payload']]
+    print(f'[DEBUG] received req: id {id}, command {command} payload {payload}')
+    return id, command, payload
 
 def _recvBytes(conn, num) -> bytes:
     '''makes sure that self.response has at least num bytes'''
