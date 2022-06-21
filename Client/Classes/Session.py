@@ -7,16 +7,32 @@ class Session:
     SERVER_ADDRES = ('192.168.0.159', 1250)
     def __init__(self):
         self.id = 0
+        self.inGame = False
+        self.opponentId = 0
+        self.lastTime = 0.0
+        
         self._connect()
+    def resetTimer(self):
         self.lastTime = 0.0
     def close(self):
         self._makeReq('!DISCONNECT')
-    def handleConn(self):
-        '''this is the function called for checking the state of connection'''
+    # TODO: maybe it would be useful to have a function which would make a request periodically after some time
+    def ensureConnection(self):
         if self.lastTime < time.time()-2.0:
             command, _ = self._makeReq('!CONNECTION_CHECK')
             assert command == '!CONNECTION_CHECK_RES'
-            self.lastTime = time.time()
+    def lookForOpponent(self) -> bool:
+        if self.lastTime < time.time()-2.0:
+            command, res = self._makeReq('!PAIR_REQ')
+            if command == '!UNPAIRED':
+                return False
+            elif command == '!PAIRED':
+                self.inGame = True
+                self.opponentId = res['opponent_id']
+                return True
+            else:
+                assert False, 'unreachable'
+            
     # internals -------------------------------------
     def _makeReq(self, command, payload: dict=dict()):
         conn = self._newServerSocket()
@@ -26,6 +42,7 @@ class Session:
         conn.close()
         assert self.id == id
         print(f'[INFO] received {command} {payload}')
+        self.lastTime = time.time()
         return command, payload
     def _newServerSocket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

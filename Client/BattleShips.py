@@ -3,9 +3,32 @@ import pygame
 from Classes import Game, Session, Constants
 
 def game():
-    gameObj = Game.Game()
-    clockObj = pygame.time.Clock()
+    pygame.init()
+    screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
     sessionObj = Session.Session()
+    if pairingWait(screen, sessionObj):
+        print(f'[INFO] paired with player id {sessionObj.opponentId}')
+        gameObj = Game.Game()
+        placeStage(screen, sessionObj, gameObj)
+    sessionObj.close()
+    pygame.quit()
+def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
+    clockObj = pygame.time.Clock()
+    font = pygame.font.SysFont('arial', 60)
+    gameRunning = True
+    while gameRunning:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                gameRunning = False
+        if sessionObj.lookForOpponent():
+            return True
+        screen.fill((255, 255, 255))
+        screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
+        pygame.display.update()
+        clockObj.tick(Constants.FPS)
+    return False
+def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gameObj: Game.Game):
+    clockObj = pygame.time.Clock()
     gameRunning = True
     while gameRunning:
         # controls ------------------------------
@@ -28,13 +51,12 @@ def game():
                 gameObj.moveCurrShipType()
 
         # connection ---------------------------
-        sessionObj.handleConn()
+        sessionObj.ensureConnection()
         # drawing -----------------------------
-        Constants.SCREEN.fill((255, 255, 255))
-        gameObj.drawGame(Constants.SCREEN)
+        screen.fill((255, 255, 255))
+        gameObj.drawGame(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    sessionObj.close()
 
 if __name__ == '__main__':
     game()

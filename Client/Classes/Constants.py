@@ -1,11 +1,8 @@
-import pygame
 
 SCREEN_WIDTH = 700
 SCREEN_HEIGHT = 700
-
-SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-
 FPS = 25
+
 GRID_HEIGHT = 10
 GRID_WIDTH = 10
 
