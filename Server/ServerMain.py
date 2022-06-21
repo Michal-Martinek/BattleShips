@@ -9,6 +9,8 @@ class ConnectedPlayer:
         self.id: int = id
         self.opponentId: int = 0
         self.inGame: bool = False
+    def __repr__(self):
+        return f'{self.__class__.__name__}(inGame={self.inGame}, id={self.id}, opponentId={self.opponentId})'
  
 
 class Server:
@@ -21,28 +23,38 @@ class Server:
 
     def handleQuery(self, conn: socket.socket):
         remoteAddr = conn.getpeername()
-        incomingId, command, payload = self._recvQuery(conn)
-        print(f'[DEBUG] id {incomingId} command {command}\npayload {payload}')
+        player, command, payload = self._recvQuery(conn)
         
         if command == '!CONNECT':
             print('[INFO] connecting new player', remoteAddr)
             player = self.newConnectedPlayer()
             assert player.id not in self.connectedPlayers
             self.connectedPlayers[player.id] = player
-            self._sendResponse(conn, incomingId, '!CONNECTED', {'id': player.id}) 
-        elif command == '!CONNECTION_CHECK':
-            self._sendResponse(conn, incomingId, '!CONNECTION_CHECK_RES')
+            self._sendResponse(conn, player.id, '!CONNECTED', {'id': player.id})
+            return
+        assert player is not None, 'incoming id is not in self.connectedPlayers'
+        if command == '!CONNECTION_CHECK':
+            if player.inGame:
+                self._sendResponse(conn, player.id, '!CONNECTION_CHECK_RES')
+            else:
+                self._sendResponse(conn, player.id, '!OPPONENT_DISCONNECTED')
         elif command == '!PAIR_REQ':
-            player = self.connectedPlayers[incomingId]
             success = self.pairPlayer(conn, player)
             if success:
                 print(f'[INFO] paired {player.id} with {player.opponentId}')           
         elif command == '!DISCONNECT':
-            self._sendResponse(conn, incomingId, '!DISCONNECT')
-            exit(1)
+            self._sendResponse(conn, player.id, '!DISCONNECT')
+            self.disconnectPlayer(player)
         else:
             print(f'[ERROR] {command}: {payload}')
             assert False, 'unreachable'
+    
+    def disconnectPlayer(self, player):
+        poped = self.connectedPlayers.pop(player.id)
+        poped.inGame = False
+        if poped.opponentId in self.connectedPlayers:
+            opponent = self.connectedPlayers[poped.opponentId]
+            opponent.inGame = False
     def _pairablePlayers(self, player: ConnectedPlayer):
         return list(filter(lambda p: not p.inGame and p.id != player.id, self.connectedPlayers.values()))
     def pairPlayer(self, conn, player: ConnectedPlayer) -> bool:
@@ -64,7 +76,6 @@ class Server:
     def loop(self):
         while True:
             conn, addr = self.serverSocket.accept()
-            print(f'[INFO] got query from {addr}')
             self.handleQuery(conn)
 
     def newConnectedPlayer(self):
@@ -78,8 +89,12 @@ class Server:
             id = random.randint(*bounds)
         return id
 
-    def _recvQuery(self, conn: socket.socket) -> tuple[int, str, dict]:
-        return ConnectionPrimitives.recv(conn)
+    def _recvQuery(self, conn: socket.socket) -> tuple[ConnectedPlayer, str, dict]:
+        id, command, payload = ConnectionPrimitives.recv(conn)
+        player = None
+        if id in self.connectedPlayers: 
+            player = self.connectedPlayers[id]
+        return player, command, payload
     def _sendResponse(self, conn: socket.socket, id: int, command: str, payload: dict={}):
         ConnectionPrimitives.send(conn, id, command, payload)
 

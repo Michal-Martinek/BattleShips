@@ -7,12 +7,13 @@ def game():
     screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
     sessionObj = Session.Session()
     if pairingWait(screen, sessionObj):
-        print(f'[INFO] paired with player id {sessionObj.opponentId}')
+        print(f'[INFO] paired with player id {sessionObj.opponentId}, starting place stage')
         gameObj = Game.Game()
         placeStage(screen, sessionObj, gameObj)
     sessionObj.close()
     pygame.quit()
 def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
+    sessionObj.resetTimer()
     clockObj = pygame.time.Clock()
     font = pygame.font.SysFont('arial', 60)
     gameRunning = True
@@ -28,6 +29,7 @@ def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
         clockObj.tick(Constants.FPS)
     return False
 def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gameObj: Game.Game):
+    sessionObj.resetTimer()
     clockObj = pygame.time.Clock()
     gameRunning = True
     while gameRunning:
@@ -51,7 +53,8 @@ def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gameObj: Gam
                 gameObj.moveCurrShipType()
 
         # connection ---------------------------
-        sessionObj.ensureConnection()
+        if not sessionObj.ensureConnection():
+            gameRunning = False
         # drawing -----------------------------
         screen.fill((255, 255, 255))
         gameObj.drawGame(screen)
