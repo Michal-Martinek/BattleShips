@@ -1,6 +1,6 @@
-import pygame
-
-from Classes import Game, Session, Constants
+import pygame, sys, os
+sys.path.append('Shared')
+from Client import Game, Session, Constants
 
 def game():
     pygame.init()

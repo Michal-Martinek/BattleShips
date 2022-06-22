@@ -1,7 +1,5 @@
 import socket, random
-import sys, os
-sys.path.append(os.path.join(os.path.split(sys.path[0])[0], 'Shared'))
-import ConnectionPrimitives # type:ignore
+from Shared import ConnectionPrimitives
 
 
 class ConnectedPlayer:
