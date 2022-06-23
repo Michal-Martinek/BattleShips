@@ -16,13 +16,18 @@ class Server:
     def __init__(self, addr):
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind(addr)
+        self.serverSocket.settimeout(0.5)
         self.serverSocket.listen()
 
         self.connectedPlayers: dict[int, ConnectedPlayer] = dict()
     def loop(self):
         while True:
-            conn, addr = self.serverSocket.accept()
-            self.handleQuery(conn)
+            try:
+                conn, addr = self.serverSocket.accept()
+            except socket.timeout:
+                pass
+            else:
+                self.handleQuery(conn)
 
     def handleQuery(self, conn: socket.socket):
         remoteAddr = conn.getpeername()
