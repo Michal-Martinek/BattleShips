@@ -1,5 +1,4 @@
-import pygame, sys, os
-sys.path.append('Shared')
+import pygame
 from Client import Game, Session, Constants
 
 def game():
