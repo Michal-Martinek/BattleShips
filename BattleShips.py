@@ -7,8 +7,8 @@ def game():
     sessionObj = Session.Session()
     if pairingWait(screen, sessionObj):
         print(f'[INFO] paired with player id {sessionObj.opponentId}, starting place stage')
-        gameObj = Game.Game()
-        placeStage(screen, sessionObj, gameObj)
+        gridObj = Game.Grid()
+        placeStage(screen, sessionObj, gridObj)
     sessionObj.close()
     pygame.quit()
 def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
@@ -27,7 +27,7 @@ def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
         pygame.display.update()
         clockObj.tick(Constants.FPS)
     return False
-def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gameObj: Game.Game):
+def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gridObj: Game.Grid):
     sessionObj.resetTimer()
     clockObj = pygame.time.Clock()
     gameRunning = True
@@ -38,25 +38,23 @@ def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gameObj: Gam
                 gameRunning = False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
-                    gameObj.rotateFlyingShip()
+                    gridObj.rotateShip()
                 if event.key == pygame.K_q:
-                    gameObj.removeShipInCursor()
-                if event.key == pygame.K_i:
-                    print(gameObj.gridObj.shipTypes)
-                # if event.key == pygame.K_s:
-                    
+                    gridObj.removeShipInCursor()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    gameObj.mouseClick()
-            if event.type == pygame.MOUSEWHEEL:
-                gameObj.moveCurrShipType()
+                    gridObj.mouseClick(event.pos)
+                if event.button == 4: # scroll up
+                    gridObj.changeSize(+1)
+                elif event.button == 5: # scroll down
+                    gridObj.changeSize(-1)
 
         # connection ---------------------------
         if not sessionObj.ensureConnection():
             gameRunning = False
         # drawing -----------------------------
         screen.fill((255, 255, 255))
-        gameObj.drawGame(screen)
+        gridObj.drawGrid(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
 
