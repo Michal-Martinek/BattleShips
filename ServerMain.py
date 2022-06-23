@@ -1,4 +1,4 @@
-import socket, random
+import socket, random, time
 from Shared import ConnectionPrimitives
 from Shared.CommandNames import *
 
@@ -8,15 +8,17 @@ class ConnectedPlayer:
         self.id: int = id
         self.opponentId: int = 0
         self.inGame: bool = False
+        self.lastReqTime = time.time()
     def __repr__(self):
         return f'{self.__class__.__name__}(inGame={self.inGame}, id={self.id}, opponentId={self.opponentId})'
  
 
 class Server:
+    MAX_TIME_FOR_DISCONNECT = 15.
     def __init__(self, addr):
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind(addr)
-        self.serverSocket.settimeout(0.5)
+        self.serverSocket.settimeout(1.0)
         self.serverSocket.listen()
 
         self.connectedPlayers: dict[int, ConnectedPlayer] = dict()
@@ -28,6 +30,8 @@ class Server:
                 pass
             else:
                 self.handleQuery(conn)
+            finally:
+                self.checkConnections()
 
     def handleQuery(self, conn: socket.socket):
         remoteAddr = conn.getpeername()
@@ -40,7 +44,10 @@ class Server:
             self.connectedPlayers[player.id] = player
             self._sendResponse(conn, player.id, COM_CONNECT, {'id': player.id})
             return
+
         assert player is not None, 'incoming id is not in self.connectedPlayers'
+        player.lastReqTime = time.time()
+
         if command == COM_CONNECTION_CHECK:
             self._sendResponse(conn, player.id, COM_CONNECTION_CHECK, {'still_ingame': player.inGame})
         elif command == COM_PAIR:
@@ -53,6 +60,12 @@ class Server:
         else:
             print(f'[ERROR] {command}: {payload}')
             assert False, 'unreachable'
+
+    def checkConnections(self):
+        for player in self.connectedPlayers.copy().values():
+            if time.time() - player.lastReqTime > self.MAX_TIME_FOR_DISCONNECT:
+                print(f'[INFO] disconnecting player {player.id} due to lack of communication')
+                self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player):
         poped = self.connectedPlayers.pop(player.id)
