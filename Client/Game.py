@@ -1,14 +1,52 @@
 import pygame
 from . import Constants
+from .Session import Session
+
+class Game:
+    def __init__(self):
+        self.session = Session()
+        self.grid = Grid()
+        self.opponentsGrid = None
+    def newGameStage(self):
+        # NOTE: this is only temporary
+        self.session.resetTimer()
+    def sendGameInfo(self):
+        info =  {'ships': self.grid.shipsDicts()}
+        self.session.sendBoard(info)
+    def recvGameInfo(self):
+        info = self.session.recvGameInfo()
+        self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
+    def rotateShip(self):
+        self.grid.rotateShip()
+    def removeShipInCursor(self):
+        self.grid.removeShipInCursor()
+    def mouseClick(self, mousePos):
+        if self.grid.mouseClick(mousePos):
+            self.sendGameInfo()
+    def changeShipSize(self, increment: int):
+        self.grid.changeSize(increment)
+    def drawGame(self, window):
+        self.grid.drawGrid(window)
+    def quit(self):
+        self.session.close()
+    def lookForOpponent(self):
+        return self.session.lookForOpponent()
+    def ensureConnection(self):
+        return self.session.ensureConnection()
 
 class Grid:
     def __init__(self):
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
-        self.flyingShip: Ship = Ship([-1, -1], 1, True)
+        self.flyingShip: Ship = Ship([-1, -1], 0, True)
         self.placedShips: list[Ship] = []
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
+    @ classmethod
+    def fromShipsDicts(cls, dicts: list[dict]):
+        grid = Grid()
+        grid.placedShips = [Ship.fromDict(d) for d in dicts]
+        return grid
     def _allShipsPlaced(self):
             return not any(self.shipSizes.values()) 
 
@@ -86,8 +124,13 @@ class Ship:
         self.pos: list[int] = pos
         self.size: int = size
         self.horizontal: bool = horizontal
+    
     def asDict(self):
         return {'pos': self.pos, 'size': self.size, 'horizontal': self.horizontal}
+    @ classmethod
+    def fromDict(self, d: dict):
+        return Ship(d['pos'], d['size'], d['horizontal'])
+
     def getFlying(self):
         return Ship([-1, -1], self.size, self.horizontal)
     def getPlacedShip(self):

@@ -28,9 +28,10 @@ class Session:
                 self.inGame = True
                 self.opponentId = res['opponent_id']
             return res['paired']
-    def sendBoard(self, grid):
-        shipsList: list[dict] = grid.shipsDicts()
-        self._makeReq(COM_BOARD_STATE, {'ships': shipsList})
+    def sendGameInfo(self, d: dict):
+        self._makeReq(COM_BOARD_STATE, d)
+    def recvGameInfo(self):
+        return self._makeReq(COM_OPPONENT_INFO)
             
     # internals -------------------------------------
     def _makeReq(self, command, payload: dict=dict(), *, updateTime=False) -> dict:

@@ -62,6 +62,10 @@ class Server:
             player.shipPlacements = payload['ships']
             # TODO: validation?
             self._sendResponse(conn, player.id, COM_BOARD_STATE)
+        elif command == COM_OPPONENT_INFO:
+            assert player.inGame, 'only players in game can request opponent info'
+            opponent = self.connectedPlayers[player.opponentId]
+            self._sendResponse(conn, player.id, COM_OPPONENT_INFO, {'opponent_ships': opponent.shipPlacements})
         else:
             print(f'[ERROR] {command}: {payload}')
             assert False, 'unreachable'
