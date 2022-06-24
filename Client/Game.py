@@ -3,9 +3,14 @@ from . import Constants
 
 class Grid:
     def __init__(self):
-        self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSIze : shipCount
+        self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
         self.flyingShip: Ship = Ship([-1, -1], 1, True)
         self.placedShips: list[Ship] = []
+
+    def shipsDicts(self):
+        return [ship.asDict() for ship in self.placedShips]
+    def _allShipsPlaced(self):
+            return not any(self.shipSizes.values()) 
 
     def rotateShip(self):
         self.flyingShip.horizontal = not self.flyingShip.horizontal
@@ -16,7 +21,8 @@ class Grid:
         if self.flyingShip.size == 0:
             self.pickUpShip(mousePos)
         else:
-            self.placeShip(mousePos)
+            self.placeShip()
+        return self._allShipsPlaced()
     def canPlaceShip(self, placed):
         gridRect = pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT)
         if not gridRect.contains(placed.getOccupiedRect()):
@@ -26,7 +32,7 @@ class Grid:
                 return False
         return True
 
-    def placeShip(self, mousePos):
+    def placeShip(self):
         placed = self.flyingShip.getPlacedShip()
         if self.canPlaceShip(placed):   
             self.placedShips.append(placed)
@@ -41,7 +47,7 @@ class Grid:
     def _pickUpClickedShip(self, ship):
         self.flyingShip = ship.getFlying()
         self.placedShips.remove(ship)
-        self.shipSizes[ship.size] += 1    
+        self.shipSizes[ship.size] += 1
 
     def _nextShipSize(self, currSize, increment):
         currSize += increment
@@ -80,6 +86,8 @@ class Ship:
         self.pos: list[int] = pos
         self.size: int = size
         self.horizontal: bool = horizontal
+    def asDict(self):
+        return {'pos': self.pos, 'size': self.size, 'horizontal': self.horizontal}
     def getFlying(self):
         return Ship([-1, -1], self.size, self.horizontal)
     def getPlacedShip(self):

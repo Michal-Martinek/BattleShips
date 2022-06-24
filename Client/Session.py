@@ -18,19 +18,22 @@ class Session:
     # TODO: maybe it would be useful to have a function which would make a request periodically after some time
     def ensureConnection(self) -> bool:
         if self.lastTime < time.time()-2.0:
-            command, payload = self._makeReq(COM_CONNECTION_CHECK, updateTime=True)
+            payload = self._makeReq(COM_CONNECTION_CHECK, updateTime=True)
             return payload['still_ingame']
         return True
     def lookForOpponent(self) -> bool:
         if self.lastTime < time.time()-2.0:
-            _, res = self._makeReq(COM_PAIR, updateTime=True)
+            res = self._makeReq(COM_PAIR, updateTime=True)
             if res['paired']:
                 self.inGame = True
                 self.opponentId = res['opponent_id']
             return res['paired']
+    def sendBoard(self, grid):
+        shipsList: list[dict] = grid.shipsDicts()
+        self._makeReq(COM_BOARD_STATE, {'ships': shipsList})
             
     # internals -------------------------------------
-    def _makeReq(self, command, payload: dict=dict(), *, updateTime=False):
+    def _makeReq(self, command, payload: dict=dict(), *, updateTime=False) -> dict:
         conn = self._newServerSocket()
         ConnectionPrimitives.send(conn, self.id, command, payload)
 
@@ -40,11 +43,11 @@ class Session:
         assert self.id == id or command == COM_CONNECT, 'The received id is not my id'
         if updateTime:
             self.lastTime = time.time()
-        return recvdCommand, payload
+        return payload
     def _newServerSocket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(self.SERVER_ADDRES)
         return s
     def _connect(self):
-        command, res = self._makeReq(COM_CONNECT)
+        res = self._makeReq(COM_CONNECT)
         self.id = res['id']

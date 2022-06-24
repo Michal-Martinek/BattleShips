@@ -9,8 +9,9 @@ class ConnectedPlayer:
         self.opponentId: int = 0
         self.inGame: bool = False
         self.lastReqTime = time.time()
+        self.shipPlacements: list[dict] = []
     def __repr__(self):
-        return f'{self.__class__.__name__}(inGame={self.inGame}, id={self.id}, opponentId={self.opponentId})'
+        return f'{self.__class__.__name__}(inGame={self.inGame}, id={self.id}, opponentId={self.opponentId}, boardState={self.boardState})'
  
 
 class Server:
@@ -57,6 +58,10 @@ class Server:
         elif command == COM_DISCONNECT:
             self._sendResponse(conn, player.id, COM_DISCONNECT)
             self.disconnectPlayer(player)
+        elif command == COM_BOARD_STATE:
+            player.shipPlacements = payload['ships']
+            # TODO: validation?
+            self._sendResponse(conn, player.id, COM_BOARD_STATE)
         else:
             print(f'[ERROR] {command}: {payload}')
             assert False, 'unreachable'

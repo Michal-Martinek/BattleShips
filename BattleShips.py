@@ -8,7 +8,9 @@ def game():
     if pairingWait(screen, sessionObj):
         print(f'[INFO] paired with player id {sessionObj.opponentId}, starting place stage')
         gridObj = Game.Grid()
-        placeStage(screen, sessionObj, gridObj)
+        if placeStage(screen, sessionObj, gridObj):
+            print('[INFO] starting game stage')
+            assert False, 'Game stage is not implemented yet'
     sessionObj.close()
     pygame.quit()
 def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
@@ -28,6 +30,7 @@ def pairingWait(screen: pygame.Surface, sessionObj: Session.Session) -> bool:
         clockObj.tick(Constants.FPS)
     return False
 def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gridObj: Game.Grid):
+    allPlaced = False
     sessionObj.resetTimer()
     clockObj = pygame.time.Clock()
     gameRunning = True
@@ -43,7 +46,9 @@ def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gridObj: Gam
                     gridObj.removeShipInCursor()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    gridObj.mouseClick(event.pos)
+                    if allPlaced := gridObj.mouseClick(event.pos):
+                        sessionObj.sendBoard(gridObj)
+                        gameRunning = False
                 if event.button == 4: # scroll up
                     gridObj.changeSize(+1)
                 elif event.button == 5: # scroll down
@@ -57,6 +62,7 @@ def placeStage(screen: pygame.Surface, sessionObj: Session.Session, gridObj: Gam
         gridObj.drawGrid(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
+    return allPlaced
 
 if __name__ == '__main__':
     game()
