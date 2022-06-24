@@ -1,10 +1,11 @@
-import pygame
+import pygame, logging
 from . import Constants
 from .Session import Session
 
 class Game:
     def __init__(self):
         self.session = Session()
+        logging.info(f'connected to the server, id={self.session.id}')
         self.grid = Grid()
         self.opponentsGrid = None
     def newGameStage(self):
@@ -12,7 +13,7 @@ class Game:
         self.session.resetTimer()
     def sendGameInfo(self):
         info =  {'ships': self.grid.shipsDicts()}
-        self.session.sendBoard(info)
+        self.session.sendGameInfo(info)
     def recvGameInfo(self):
         info = self.session.recvGameInfo()
         self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
@@ -87,9 +88,10 @@ class Grid:
         self.placedShips.remove(ship)
         self.shipSizes[ship.size] += 1
 
-    def _nextShipSize(self, currSize, increment):
-        currSize += increment
+    def _nextShipSize(self, startSize, increment):
+        currSize = startSize + increment
         while currSize not in self.shipSizes:
+            if currSize == startSize: break
             currSize += increment
             currSize = currSize % (max(self.shipSizes.keys()) + 1)
         return currSize
@@ -100,7 +102,8 @@ class Grid:
         while self.shipSizes[currSize] == 0:
             currSize = self._nextShipSize(currSize, increment)
             if currSize == self.flyingShip.size:
-                self.removeShipInCursor()
+                if self.shipSizes[currSize] == 0:
+                    self.removeShipInCursor()
                 return
         self.flyingShip.size = currSize
     

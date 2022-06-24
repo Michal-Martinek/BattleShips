@@ -1,4 +1,4 @@
-import socket, random, time
+import socket, random, time, logging
 from Shared import ConnectionPrimitives
 from Shared.CommandNames import *
 
@@ -35,11 +35,10 @@ class Server:
                 self.checkConnections()
 
     def handleQuery(self, conn: socket.socket):
-        remoteAddr = conn.getpeername()
         player, command, payload = self._recvQuery(conn)
         
         if command == COM_CONNECT:
-            print('[INFO] connecting new player', remoteAddr)
+            logging.info(f'connecting new player from {conn.getpeername()}')
             player = self.newConnectedPlayer()
             assert player.id not in self.connectedPlayers
             self.connectedPlayers[player.id] = player
@@ -54,7 +53,7 @@ class Server:
         elif command == COM_PAIR:
             success = self.pairPlayer(conn, player)
             if success:
-                print(f'[INFO] paired {player.id} with {player.opponentId}')           
+                logging.info(f'paired {player.id} with {player.opponentId}')     
         elif command == COM_DISCONNECT:
             self._sendResponse(conn, player.id, COM_DISCONNECT)
             self.disconnectPlayer(player)
@@ -67,16 +66,16 @@ class Server:
             opponent = self.connectedPlayers[player.opponentId]
             self._sendResponse(conn, player.id, COM_OPPONENT_INFO, {'opponent_ships': opponent.shipPlacements})
         else:
-            print(f'[ERROR] {command}: {payload}')
+            logging.error(f'{command}: {payload}')
             assert False, 'unreachable'
 
     def checkConnections(self):
         for player in self.connectedPlayers.copy().values():
             if time.time() - player.lastReqTime > self.MAX_TIME_FOR_DISCONNECT:
-                print(f'[INFO] disconnecting player {player.id} due to lack of communication')
                 self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player):
+        logging.info(f'disconnecting player {player.id}')
         poped = self.connectedPlayers.pop(player.id)
         poped.inGame = False
         if poped.opponentId in self.connectedPlayers:
@@ -118,9 +117,10 @@ class Server:
 
 
 def serverMain():
+    logging.basicConfig(level=logging.INFO)
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
-    print(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
+    logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
     server.loop()    
 if __name__ == '__main__':
     serverMain()

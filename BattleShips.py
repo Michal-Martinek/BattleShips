@@ -1,15 +1,17 @@
 import pygame
+import logging
 from Client import Game, Constants
 
 def game():
     pygame.init()
+    logging.basicConfig(level=logging.INFO)
     screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
 
     game = Game.Game()
     if pairingWait(screen, game):
-        print(f'[INFO] paired with player id {game.session.opponentId}, starting place stage')
+        logging.info(f'paired with player id {game.session.opponentId}, starting place stage')
         if placeStage(screen, game):
-            print('[INFO] starting game stage')
+            logging.info('starting game stage')
             game.quit()
             assert False, 'Game stage is not implemented yet'
 
@@ -49,6 +51,7 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if allPlaced := game.mouseClick(event.pos):
+                        logging.info('all ships placed, sending game info to the server')
                         game.sendGameInfo()
                         gameRunning = False
                 if event.button == 4: # scroll up

@@ -1,4 +1,4 @@
-import socket, json
+import socket, json, logging
 import pickle
 
 # header fields ----------------------------
@@ -6,7 +6,7 @@ MSGLEN_SIZE = 8
 
 def send(conn: socket.socket, id: int, command: str, payload: dict={}):
     assert isinstance(payload, dict)
-    print(f'[DEBUG] sending req: id {id}, command {command} payload {payload}')
+    logging.debug(f'sending req: id {id}, command {command} payload {payload}')
     msg = {
         'id': id, 
         'command': command, 
@@ -26,7 +26,7 @@ def recv(conn: socket.socket) -> tuple[int, str, dict]:
 
     conn.shutdown(socket.SHUT_RD)
     id, command, payload = [response[x] for x in ['id', 'command', 'payload']]
-    print(f'[DEBUG] received req: id {id}, command {command} payload {payload}')
+    logging.debug(f'received req: id {id}, command {command} payload {payload}')
     return id, command, payload
 
 def _recvBytes(conn, num) -> bytes:
