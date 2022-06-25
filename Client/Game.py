@@ -16,7 +16,8 @@ class Game:
         self.session.sendGameInfo(info)
     def recvGameInfo(self):
         info = self.session.recvGameInfo()
-        self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
+        if info:
+            self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
     def rotateShip(self):
         self.grid.rotateShip()
     def removeShipInCursor(self):

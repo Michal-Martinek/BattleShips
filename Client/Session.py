@@ -19,7 +19,7 @@ class Session:
     def ensureConnection(self) -> bool:
         if self.lastTime < time.time()-2.0:
             payload = self._makeReq(COM_CONNECTION_CHECK, updateTime=True)
-            return payload['still_ingame']
+            return payload['stay_connected']
         return True
     def lookForOpponent(self) -> bool:
         if self.lastTime < time.time()-2.0:
@@ -31,8 +31,11 @@ class Session:
     def sendGameInfo(self, d: dict):
         self._makeReq(COM_BOARD_STATE, d)
     def recvGameInfo(self):
-        return self._makeReq(COM_OPPONENT_INFO)
-            
+        res = self._makeReq(COM_OPPONENT_INFO)
+        if res['known']:
+            return res['state']
+        return None
+    
     # internals -------------------------------------
     def _makeReq(self, command, payload: dict=dict(), *, updateTime=False) -> dict:
         conn = self._newServerSocket()
