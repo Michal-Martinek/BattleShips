@@ -7,30 +7,46 @@ class Game:
         self.session = Session()
         logging.info(f'connected to the server, id={self.session.id}')
         self.grid = Grid()
+        self.readyForGame: bool = False # signalizes that the player has done playcing the ships and wants to start the game
         self.opponentsGrid = None
     def newGameStage(self):
-        # NOTE: this is only temporary
-        self.session.resetTimer()
-    def sendGameInfo(self):
-        info =  {'ships': self.grid.shipsDicts()}
-        self.session.sendGameInfo(info)
-    def recvGameInfo(self):
-        info = self.session.recvGameInfo()
-        if info:
-            self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
+        self.session.resetAllTimers()
+    def sendReadyForGame(self):
+        state =  {'ready': self.readyForGame, 'ships': self.grid.shipsDicts()}
+        self.session.sendReadyForGame(state)
     def rotateShip(self):
         self.grid.rotateShip()
     def removeShipInCursor(self):
         self.grid.removeShipInCursor()
     def mouseClick(self, mousePos):
-        if self.grid.mouseClick(mousePos):
-            self.sendGameInfo()
+        if not self.readyForGame:
+            self.grid.mouseClick(mousePos)
+            if self.allShipsPlaced():
+                self.toggleGameReady()
     def changeShipSize(self, increment: int):
         self.grid.changeSize(increment)
-    def drawGame(self, window):
+    def drawGame(self, window, font):
         self.grid.drawGrid(window)
+        if self.readyForGame:
+            surf = font.render('Waiting for the other player to place ships...', True, (0, 0, 0), (255, 255, 255))
+            pygame.draw.rect(window, (0, 0, 0), (25, 200, surf.get_width(), surf.get_height()), 5)
+            window.blit(surf, (25, 200))
     def quit(self):
         self.session.close()
+    def allShipsPlaced(self):
+        return self.grid.allShipsPlaced()
+    def toggleGameReady(self):
+        if self.readyForGame or self.allShipsPlaced():
+            self.newGameStage()
+            self.readyForGame = not self.readyForGame
+            self.sendReadyForGame()
+            logging.info('all ships placed, sending ready for game to the server')
+    def waitForGame(self) -> bool:
+        info = self.session.waitForGame()
+        if info:
+            self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
+            return False
+        return True
     def lookForOpponent(self):
         return self.session.lookForOpponent()
     def ensureConnection(self):
@@ -49,7 +65,7 @@ class Grid:
         grid = Grid()
         grid.placedShips = [Ship.fromDict(d) for d in dicts]
         return grid
-    def _allShipsPlaced(self):
+    def allShipsPlaced(self):
             return not any(self.shipSizes.values()) 
 
     def rotateShip(self):
@@ -62,7 +78,6 @@ class Grid:
             self.pickUpShip(mousePos)
         else:
             self.placeShip()
-        return self._allShipsPlaced()
     def canPlaceShip(self, placed):
         gridRect = pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT)
         if not gridRect.contains(placed.getOccupiedRect()):

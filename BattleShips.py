@@ -34,8 +34,8 @@ def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
         clockObj.tick(Constants.FPS)
     return False
 def placeStage(screen: pygame.Surface, game: Game.Game):
-    allPlaced = False
     game.newGameStage()
+    font = pygame.font.SysFont('arial', 40)
     clockObj = pygame.time.Clock()
     gameRunning = True
     while gameRunning:
@@ -48,12 +48,11 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
                     game.rotateShip()
                 if event.key == pygame.K_q:
                     game.removeShipInCursor()
+                if event.key == pygame.K_g:
+                    game.toggleGameReady()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if allPlaced := game.mouseClick(event.pos):
-                        logging.info('all ships placed, sending game info to the server')
-                        game.sendGameInfo()
-                        gameRunning = False
+                    game.mouseClick(event.pos)
                 if event.button == 4: # scroll up
                     game.changeShipSize(+1)
                 elif event.button == 5: # scroll down
@@ -62,12 +61,14 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
         # connection ---------------------------
         if not game.ensureConnection():
             gameRunning = False
+        if game.readyForGame and gameRunning:
+            gameRunning = game.waitForGame()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
-        game.drawGame(screen)
+        game.drawGame(screen, font)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return allPlaced
+    return game.readyForGame
 
 if __name__ == '__main__':
     game()

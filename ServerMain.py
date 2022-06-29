@@ -9,7 +9,7 @@ class ConnectedPlayer:
         self.id: int = id
         self.gameId: int = 0
         self.lastReqTime = time.time()
-        self.gameState: dict = {}
+        self.gameState: dict = {'ready': False}
     @ property
     def inGame(self):
         return self.gameId != 0
@@ -33,8 +33,7 @@ class Game:
         assert player.id in self.players, 'trying to update player game state for nonexistent player'
         player.gameState = state
     def getOpponentState(self, player):
-        state = self.getOpponent(player).gameState
-        return {'known': state!={}, 'state': state}
+        return self.getOpponent(player).gameState
 
     def getOpponent(self, player: ConnectedPlayer) -> ConnectedPlayer:
         return [p for p in self.players.values() if p.id != player.id][0]
@@ -90,12 +89,12 @@ class Server:
     def handleQueriesInGame(self, conn: socket.socket, player: ConnectedPlayer, command: str, payload: dict, game: Game) -> bool:
         '''handles queries from players who should be in a game
         @return True if the command was recognized'''
-        if command == COM_BOARD_STATE:
+        if command == COM_GAME_READINESS:
             game.updateGameState(player, payload)
-            self._sendResponse(conn, player.id, COM_BOARD_STATE)
-        elif command == COM_OPPONENT_INFO:
+            self._sendResponse(conn, player.id, COM_GAME_READINESS)
+        elif command == COM_GAME_WAIT:
             state = game.getOpponentState(player)
-            self._sendResponse(conn, player.id, COM_OPPONENT_INFO, state)
+            self._sendResponse(conn, player.id, COM_GAME_WAIT, state)
         else:
             return False
         return True
