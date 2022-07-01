@@ -37,17 +37,20 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
     game.newGameStage()
     font = pygame.font.SysFont('arial', 40)
     clockObj = pygame.time.Clock()
+
+    exited = False
     gameRunning = True
     while gameRunning:
         # controls ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
+                exited = True
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
                     game.rotateShip()
                 if event.key == pygame.K_q:
-                    game.removeShipInCursor()
+                    game.changeCursor()
                 if event.key == pygame.K_g:
                     game.toggleGameReady()
             elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -70,7 +73,7 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
         game.drawGame(screen, font)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return game.readyForGame
+    return game.readyForGame and not exited
 
 if __name__ == '__main__':
     game()

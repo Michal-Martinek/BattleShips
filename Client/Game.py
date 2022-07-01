@@ -16,15 +16,17 @@ class Game:
         return self.session.sendReadyForGame(state)
     def rotateShip(self):
         self.grid.rotateShip()
-    def removeShipInCursor(self):
-        self.grid.removeShipInCursor()
+    def changeCursor(self):
+        if not self.grid.allShipsPlaced():
+            self.grid.changeCursor(pygame.mouse.get_pos())
     def mouseClick(self, mousePos, rightClick):
         if not self.readyForGame:
-            self.grid.mouseClick(mousePos, rightClick)
-            if self.allShipsPlaced():
+            changed = self.grid.mouseClick(mousePos, rightClick)
+            if changed:
                 self.toggleGameReady()
     def changeShipSize(self, increment: int):
-        self.grid.changeSize(increment)
+        if not self.grid.allShipsPlaced():
+            self.grid.changeSize(increment)
     def drawGame(self, window, font):
         self.grid.drawGrid(window)
         if self.readyForGame:
@@ -33,14 +35,13 @@ class Game:
             window.blit(surf, (25, 200))
     def quit(self):
         self.session.close()
-    def allShipsPlaced(self):
-        return self.grid.allShipsPlaced()
     def toggleGameReady(self):
-        approved = self.sendReadyForGame()
-        if approved:
-            self.newGameStage()
-            self.readyForGame = not self.readyForGame
-            logging.debug('toggling readyForGame')
+        if self.grid.allShipsPlaced():
+            approved = self.sendReadyForGame()
+            if approved:
+                self.newGameStage()
+                self.readyForGame = not self.readyForGame
+                logging.debug('toggling readyForGame')
     def waitForGame(self) -> bool:
         info = self.session.waitForGame()
         if info:
@@ -70,16 +71,24 @@ class Grid:
 
     def rotateShip(self):
         self.flyingShip.horizontal = not self.flyingShip.horizontal
+    def changeCursor(self, mousePos):
+        clicked = self._getClickedShip(mousePos)
+        initialSize = self.flyingShip.size
+        if clicked:
+            self.changeSize(+1, canBeSame=True, currSize=clicked.size)
+        if not clicked or (self.flyingShip.size == initialSize):
+            self.removeShipInCursor()
     def removeShipInCursor(self):
         self.flyingShip.size = 0
 
-    def mouseClick(self, mousePos, rightClick: bool):
+    def mouseClick(self, mousePos, rightClick: bool) -> bool:
         '''handles the mouse click
-        @rightClick - the click is considered RMB click, otherwise LMB'''
+        @rightClick - the click is considered RMB click, otherwise LMB
+        @return - if anything changed'''
         if self.flyingShip.size == 0 or rightClick:
-            self.pickUpShip(mousePos)
+            return self.pickUpShip(mousePos)
         else:
-            self.placeShip()
+            return self.placeShip()
     def canPlaceShip(self, placed):
         gridRect = pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT)
         if not gridRect.contains(placed.getOccupiedRect()):
@@ -89,23 +98,28 @@ class Grid:
                 return False
         return True
 
-    def placeShip(self):
+    def placeShip(self) -> bool:
         placed = self.flyingShip.getPlacedShip()
-        if self.canPlaceShip(placed):   
+        canPlace = self.canPlaceShip(placed)
+        if canPlace:
             self.placedShips.append(placed)
             self.shipSizes[placed.size] -= 1
             self.changeSize(+1, canBeSame=True)
+        return canPlace
 
-    def pickUpShip(self, mousePos):
+    def pickUpShip(self, mousePos) -> bool:
+        ship = self._getClickedShip(mousePos)
+        if ship:
+            self.removeShipInCursor()
+            self.flyingShip = ship.getFlying()
+            self.placedShips.remove(ship)
+            self.shipSizes[ship.size] += 1
+        return bool(ship)
+    def _getClickedShip(self, mousePos):
         for ship in self.placedShips:
             if ship.realRect.collidepoint(mousePos):
-                self._pickUpClickedShip(ship)
-                break
-    def _pickUpClickedShip(self, ship):
-        self.removeShipInCursor()
-        self.flyingShip = ship.getFlying()
-        self.placedShips.remove(ship)
-        self.shipSizes[ship.size] += 1
+                return ship
+        return None
 
     def _nextShipSize(self, startSize, increment):
         currSize = startSize + increment
@@ -114,18 +128,20 @@ class Grid:
             currSize += increment
             currSize = currSize % (max(self.shipSizes.keys()) + 1)
         return currSize
-    def changeSize(self, increment: int, *, canBeSame=False):
-        currSize = self.flyingShip.size
+    def changeSize(self, increment: int, *, canBeSame=False, currSize=None):
+        if currSize is None:
+            currSize = self.flyingShip.size
+        startSize = currSize
         if not canBeSame:
             currSize = self._nextShipSize(currSize, increment)
         while self.shipSizes[currSize] == 0:
             currSize = self._nextShipSize(currSize, increment)
-            if currSize == self.flyingShip.size:
+            if currSize == startSize:
                 if self.shipSizes[currSize] == 0:
                     self.removeShipInCursor()
                 return
         self.flyingShip.size = currSize
-    
+
     def drawGrid(self, window):
         self.drawGridlines(window)
         for ship in self.placedShips:
