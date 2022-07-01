@@ -18,9 +18,9 @@ class Game:
         self.grid.rotateShip()
     def removeShipInCursor(self):
         self.grid.removeShipInCursor()
-    def mouseClick(self, mousePos):
+    def mouseClick(self, mousePos, rightClick):
         if not self.readyForGame:
-            self.grid.mouseClick(mousePos)
+            self.grid.mouseClick(mousePos, rightClick)
             if self.allShipsPlaced():
                 self.toggleGameReady()
     def changeShipSize(self, increment: int):
@@ -40,7 +40,7 @@ class Game:
         if approved:
             self.newGameStage()
             self.readyForGame = not self.readyForGame
-            logging.info('toggling readyForGame')
+            logging.debug('toggling readyForGame')
     def waitForGame(self) -> bool:
         info = self.session.waitForGame()
         if info:
@@ -73,8 +73,10 @@ class Grid:
     def removeShipInCursor(self):
         self.flyingShip.size = 0
 
-    def mouseClick(self, mousePos):
-        if self.flyingShip.size == 0:
+    def mouseClick(self, mousePos, rightClick: bool):
+        '''handles the mouse click
+        @rightClick - the click is considered RMB click, otherwise LMB'''
+        if self.flyingShip.size == 0 or rightClick:
             self.pickUpShip(mousePos)
         else:
             self.placeShip()
@@ -100,6 +102,7 @@ class Grid:
                 self._pickUpClickedShip(ship)
                 break
     def _pickUpClickedShip(self, ship):
+        self.removeShipInCursor()
         self.flyingShip = ship.getFlying()
         self.placedShips.remove(ship)
         self.shipSizes[ship.size] += 1

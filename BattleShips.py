@@ -43,17 +43,19 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
-            if event.type == pygame.KEYDOWN:
+            elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
                     game.rotateShip()
                 if event.key == pygame.K_q:
                     game.removeShipInCursor()
                 if event.key == pygame.K_g:
                     game.toggleGameReady()
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    game.mouseClick(event.pos)
-                if event.button == 4: # scroll up
+                    game.mouseClick(event.pos, rightClick=False)
+                elif event.button == 3:
+                    game.mouseClick(event.pos, rightClick=True)
+                elif event.button == 4: # scroll up
                     game.changeShipSize(+1)
                 elif event.button == 5: # scroll down
                     game.changeShipSize(-1)
