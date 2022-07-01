@@ -33,12 +33,13 @@ class Session:
                 self.opponentId = res['opponent_id']
             return res['paired']
     def sendReadyForGame(self, state: dict):
-        self._makeReq(COM_GAME_READINESS, state)
+        ret = self._makeReq(COM_GAME_READINESS, state)
+        return ret['approved']
     def waitForGame(self):
         if self.timers[COM_GAME_WAIT] < time.time()-2.0:
             res = self._makeReq(COM_GAME_WAIT, updateTimer=COM_GAME_WAIT)
-            if res['ready']:
-                return res
+            if res['started']:
+                return res['opponent_state']
         return None
     
     # internals -------------------------------------

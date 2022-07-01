@@ -15,13 +15,19 @@ class ConnectedPlayer:
         return self.gameId != 0
     def __repr__(self):
         return f'{self.__class__.__name__}(id={self.id}, gameId={self.gameId}, gameState={self.gameState})'
+    def shootingReady(self):
+        return self.gameState['ready']
     def disconnect(self):
         self.connected = False
 
 class Game:
+    STAGE_PLACING = 1
+    STAGE_SHOOTING = 2
+
     def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer):
         self.id: int = id
         self.gameActive: bool = True
+        self.gameStage: int = Game.STAGE_PLACING
         self.players: dict[int, ConnectedPlayer] = {player1.id: player1, player2.id: player2}
         self.setPlayersForGame()
     def setPlayersForGame(self):
@@ -43,6 +49,11 @@ class Game:
     def playerDisconnect(self, player: ConnectedPlayer):
         player.disconnect()
         self.gameActive = False
+    def canStartShooting(self):
+        return all([p.shootingReady() for p in self.players.values()])
+    def startShooting(self):
+        assert self.gameStage == self.STAGE_PLACING, 'Game needs to be in the placing stage to be started'
+        self.gameStage = self.STAGE_SHOOTING
 
 class Server:
     MAX_TIME_FOR_DISCONNECT = 15.
@@ -90,11 +101,18 @@ class Server:
         '''handles queries from players who should be in a game
         @return True if the command was recognized'''
         if command == COM_GAME_READINESS:
-            game.updateGameState(player, payload)
-            self._sendResponse(conn, player.id, COM_GAME_READINESS)
+            approved = False
+            if payload['ready'] or game.gameStage == game.STAGE_PLACING:
+                game.updateGameState(player, payload)
+                approved = True
+            self._sendResponse(conn, player.id, COM_GAME_READINESS, {'approved': approved})
         elif command == COM_GAME_WAIT:
-            state = game.getOpponentState(player)
-            self._sendResponse(conn, player.id, COM_GAME_WAIT, state)
+            assert player.shootingReady(), 'Don\'t expect a COM_GAME_WAIT from player without being ready'
+            started = False
+            if game.canStartShooting():
+                game.startShooting()
+                started = True
+            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': started, 'opponent_state': game.getOpponentState(player)})
         else:
             return False
         return True

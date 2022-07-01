@@ -11,9 +11,9 @@ class Game:
         self.opponentsGrid = None
     def newGameStage(self):
         self.session.resetAllTimers()
-    def sendReadyForGame(self):
-        state =  {'ready': self.readyForGame, 'ships': self.grid.shipsDicts()}
-        self.session.sendReadyForGame(state)
+    def sendReadyForGame(self) -> bool:
+        state =  {'ready': not self.readyForGame, 'ships': self.grid.shipsDicts()}
+        return self.session.sendReadyForGame(state)
     def rotateShip(self):
         self.grid.rotateShip()
     def removeShipInCursor(self):
@@ -36,11 +36,11 @@ class Game:
     def allShipsPlaced(self):
         return self.grid.allShipsPlaced()
     def toggleGameReady(self):
-        if self.readyForGame or self.allShipsPlaced():
+        approved = self.sendReadyForGame()
+        if approved:
             self.newGameStage()
             self.readyForGame = not self.readyForGame
-            self.sendReadyForGame()
-            logging.info('all ships placed, sending ready for game to the server')
+            logging.info('toggling readyForGame')
     def waitForGame(self) -> bool:
         info = self.session.waitForGame()
         if info:
