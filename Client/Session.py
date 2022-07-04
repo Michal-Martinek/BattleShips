@@ -1,32 +1,33 @@
 import socket, time
 from Shared import ConnectionPrimitives
 from Shared.CommandNames import *
-from . import Game
 
 class Session:
     SERVER_ADDRES = ('192.168.0.159', 1250)
+    TIME_BETWEEN_REQUESTS = 1.0
+    
     def __init__(self):
-        self.id = 0
-        self.inGame = False
-        self.opponentId = 0
-        self.timers = {}
+        self.id: int = 0
+        self.inGame: bool = False
+        self.opponentId: int = 0
+        self.timers: dict[str, float] = {}
         self.resetAllTimers()
         
         self._connect()
     def resetTimer(self, timer: str):
         self.timers[timer] = 0.0
     def resetAllTimers(self):
-        self.timers = self.timers = {COM_CONNECTION_CHECK: 0.0, COM_PAIR: 0.0, COM_GAME_WAIT: 0.0}
+        self.timers = {COM_CONNECTION_CHECK: 0.0, COM_PAIR: 0.0, COM_GAME_WAIT: 0.0}
     def close(self):
         self._makeReq(COM_DISCONNECT)
     # TODO: maybe it would be useful to have a function which would make a request periodically after some time
     def ensureConnection(self) -> bool:
-        if self.timers[COM_CONNECTION_CHECK] < time.time()-2.0:
+        if self.timers[COM_CONNECTION_CHECK] < time.time()-self.TIME_BETWEEN_REQUESTS:
             payload = self._makeReq(COM_CONNECTION_CHECK, updateTimer=COM_CONNECTION_CHECK)
             return payload['stay_connected']
         return True
     def lookForOpponent(self) -> bool:
-        if self.timers[COM_PAIR] < time.time()-2.0:
+        if self.timers[COM_PAIR] < time.time()-self.TIME_BETWEEN_REQUESTS:
             res = self._makeReq(COM_PAIR, updateTimer=COM_PAIR)
             if res['paired']:
                 self.inGame = True
@@ -36,7 +37,7 @@ class Session:
         ret = self._makeReq(COM_GAME_READINESS, state)
         return ret['approved']
     def waitForGame(self):
-        if self.timers[COM_GAME_WAIT] < time.time()-2.0:
+        if self.timers[COM_GAME_WAIT] < time.time()-self.TIME_BETWEEN_REQUESTS:
             res = self._makeReq(COM_GAME_WAIT, updateTimer=COM_GAME_WAIT)
             if res['started']:
                 return res['opponent_state']
