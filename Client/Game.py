@@ -9,6 +9,7 @@ class Game:
         self.grid = Grid()
         self.readyForGame: bool = False # signalizes that the player has done playcing the ships and wants to start the game
         self.opponentsGrid = None
+        self.onTurn: bool = False
     def newGameStage(self):
         self.session.resetAllTimers()
     def sendReadyForGame(self) -> bool:
@@ -33,6 +34,11 @@ class Game:
             surf = font.render('Waiting for the other player to place ships...', True, (0, 0, 0), (255, 255, 255))
             pygame.draw.rect(window, (0, 0, 0), (25, 200, surf.get_width(), surf.get_height()), 5)
             window.blit(surf, (25, 200))
+    def drawOnTurn(self, window):
+        self.grid.drawShotted(window)
+    def drawOutTurn(self, window):
+        self.grid.drawGrid(window)
+
     def quit(self):
         self.session.close()
     def toggleGameReady(self):
@@ -44,10 +50,23 @@ class Game:
                 logging.debug('toggling readyForGame')
     def waitForGame(self) -> bool:
         info = self.session.waitForGame()
-        if info:
-            self.opponentsGrid = Grid.fromShipsDicts(info['ships'])
+        if info is not None:
+            self.opponentsGrid = Grid.fromShipsDicts(info[0]['ships'])
+            self.onTurn = info[1]
             return False
         return True
+    def opponentShot(self):
+        pos = self.session.opponentShot()
+        if pos is not None:
+            self.grid.opponentShot(pos)
+            self.onTurn = True
+    def shoot(self, mousePos):
+        if self.onTurn:
+            gridPos = self.grid.shoot(mousePos)
+            if gridPos:
+                hitted = self.session.shoot(gridPos)
+                self.grid.updateHitted(gridPos, hitted)
+                self.onTurn = False
     def lookForOpponent(self):
         return self.session.lookForOpponent()
     def ensureConnection(self):
@@ -58,6 +77,8 @@ class Grid:
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
         self.flyingShip: Ship = Ship([-1, -1], 0, True)
         self.placedShips: list[Ship] = []
+        self.shotedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.hittedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
@@ -140,7 +161,21 @@ class Grid:
                 if self.shipSizes[currSize] == 0:
                     self.removeShipInCursor()
                 return
-        self.flyingShip.size = currSize
+        self.flyingShip.setSize(currSize)
+    
+    def opponentShot(self, pos):
+        for ship in self.placedShips:
+            if ship.shot(pos):
+                return True
+        return False
+    def shoot(self, mousePos):
+        clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
+        if self.shotedMap[clickedY][clickedX]:
+            return False
+        self.shotedMap[clickedY][clickedX] = True
+        return [clickedX, clickedY]
+    def updateHitted(self, pos, hitted):
+        self.hittedMap[pos[1]][pos[0]] = hitted
 
     def drawGrid(self, window):
         self.drawGridlines(window)
@@ -148,6 +183,14 @@ class Grid:
             ship.draw(window)
         if self.flyingShip.size:
             self.flyingShip.draw(window)
+    def drawShotted(self, window):
+        self.drawGridlines(window)
+        for y, lineShotted in enumerate(self.shotedMap):
+            for x, shotted in enumerate(lineShotted):
+                if shotted:
+                    pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+                    color = [(0, 0, 255), (255, 0, 0)][self.hittedMap[y][x]]
+                    pygame.draw.circle(window, color, pos, Constants.GRID_X_SPACING // 4)
     def drawGridlines(self, window):
         for row in range(Constants.GRID_HEIGHT):
             yCoord = Constants.GRID_Y_SPACING * row
@@ -158,17 +201,23 @@ class Grid:
 
 
 class Ship:
-    def __init__(self, pos: list, size, horizontal):
+    def __init__(self, pos: list, size, horizontal, hitted=None):
         self.pos: list[int] = pos
         self.size: int = size
         self.horizontal: bool = horizontal
+        if hitted is None:
+            hitted = [False] * size
+        self.hitted: list[bool] = hitted
     
     def asDict(self):
-        return {'pos': self.pos, 'size': self.size, 'horizontal': self.horizontal}
+        return {'pos': self.pos, 'size': self.size, 'horizontal': self.horizontal, 'hitted': self.hitted}
     @ classmethod
     def fromDict(self, d: dict):
-        return Ship(d['pos'], d['size'], d['horizontal'])
-
+        return Ship(d['pos'], d['size'], d['horizontal'], d['hitted'])
+    
+    def setSize(self, size):
+        self.size = size
+        self.hitted = [False] * size
     def getFlying(self):
         return Ship([-1, -1], self.size, self.horizontal)
     def getPlacedShip(self):
@@ -216,7 +265,22 @@ class Ship:
         '''checks if other collides with the noShipsRect of self'''
         return self.getnoShipsRect().colliderect(other.getOccupiedRect())
     
+    def shot(self, pos) -> bool:
+        if not self.getOccupiedRect().collidepoint(pos):
+            return False
+
+        realPos = pos[0] * Constants.GRID_X_SPACING, pos[1] * Constants.GRID_Y_SPACING
+        for i, (x, y) in enumerate(self.getRealSegmentCoords()):
+            r = pygame.Rect(x, y, 1, 1)
+            if r.collidepoint((realPos)):
+                self.hitted[i] = True
+                return True
+        return False
+    
     def draw(self, window):
-        for x, y in self.getRealSegmentCoords():
+        for hitted, (x, y) in zip(self.hitted, self.getRealSegmentCoords()):
             pygame.draw.rect(window, (0, 0, 0), (x, y, Constants.GRID_X_SPACING, Constants.GRID_Y_SPACING), 1)
+            if hitted:
+                pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
+                pygame.draw.circle(window, (255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
         pygame.draw.rect(window, (0, 0, 0), self.realRect, 4)

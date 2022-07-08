@@ -13,9 +13,8 @@ def game():
     if pairingWait(screen, game):
         logging.info(f'paired with player id {game.session.opponentId}, starting place stage')
         if placeStage(screen, game):
-            logging.info('starting game stage')
-            game.quit()
-            assert False, 'Game stage is not implemented yet'
+            logging.info('starting shooting stage')
+            shootingStage(screen, game)
 
     game.quit()
     pygame.quit()
@@ -76,6 +75,34 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
         pygame.display.update()
         clockObj.tick(Constants.FPS)
     return game.readyForGame and not exited
+def shootingStage(screen: pygame.Surface, game: Game.Game):
+    game.newGameStage()
+    clockObj = pygame.time.Clock()
+
+    gameRunning = True
+    while gameRunning:
+        # controls ------------------------------
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                gameRunning = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    game.shoot(event.pos)
+
+        # connection ---------------------------
+        if not game.ensureConnection():
+            gameRunning = False
+        if not game.onTurn:
+            game.opponentShot()
+        
+        # drawing -----------------------------
+        screen.fill((255, 255, 255))
+        if game.onTurn:
+            game.drawOnTurn(screen)
+        else:
+            game.drawOutTurn(screen)
+        pygame.display.update()
+        clockObj.tick(Constants.FPS)
 
 if __name__ == '__main__':
     game()

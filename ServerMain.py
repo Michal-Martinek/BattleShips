@@ -30,6 +30,8 @@ class Game:
         self.gameStage: int = Game.STAGE_PLACING
         self.players: dict[int, ConnectedPlayer] = {player1.id: player1, player2.id: player2}
         self.setPlayersForGame()
+        self.playerOnTurn: int = 0
+        self.shottedPos = [-1, -1]
     def setPlayersForGame(self):
         for p in self.players.values():
             p.gameId = self.id
@@ -43,6 +45,11 @@ class Game:
 
     def getOpponent(self, player: ConnectedPlayer) -> ConnectedPlayer:
         return [p for p in self.players.values() if p.id != player.id][0]
+    def swapTurn(self):
+        l = list(self.players.keys())
+        l.remove(self.playerOnTurn)
+        self.playerOnTurn = l[0]
+        self.shottedPos = [-1, -1]
 
     def canBeEnded(self):
         return not (self.gameActive or any([p.connected for p in self.players.values()]))
@@ -50,10 +57,29 @@ class Game:
         player.disconnect()
         self.gameActive = False
     def canStartShooting(self):
-        return all([p.shootingReady() for p in self.players.values()])
+        return self.gameStage == self.STAGE_PLACING and all([p.shootingReady() for p in self.players.values()])
     def startShooting(self):
         assert self.gameStage == self.STAGE_PLACING, 'Game needs to be in the placing stage to be started'
+        logging.info(f'starting game id {self.id}')
         self.gameStage = self.STAGE_SHOOTING
+        self.playerOnTurn = random.choice(list(self.players.keys()))
+    def opponentShotted(self, player: ConnectedPlayer) -> tuple[bool, list[int]]:
+        shotted = self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
+        pos = self.shottedPos
+        if shotted:
+            self.swapTurn()
+        return shotted, pos
+    def shoot(self, player, pos) -> bool:
+        assert player.id == self.playerOnTurn, 'only player on turn can shoot'
+        self.shottedPos = pos
+        for ship in self.getOpponentState(player)['ships']:
+            x, y = ship['pos']
+            horizontal = ship['horizontal']
+            size = ship['size']
+            if (x <= pos[0] <= x + (size - 1) * horizontal) and (y <= pos[1] <= y + (size - 1) * (not horizontal)):
+                return True
+        return False
+
 
 class Server:
     MAX_TIME_FOR_DISCONNECT = 15.
@@ -108,11 +134,17 @@ class Server:
             self._sendResponse(conn, player.id, COM_GAME_READINESS, {'approved': approved})
         elif command == COM_GAME_WAIT:
             assert player.shootingReady(), 'Don\'t expect a COM_GAME_WAIT from player without being ready'
-            started = False
             if game.canStartShooting():
                 game.startShooting()
-                started = True
-            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': started, 'opponent_state': game.getOpponentState(player)})
+            # TODO: we should not send the opponents state
+            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn, 'opponent_state': game.getOpponentState(player)})
+        elif command == COM_SHOOT:
+            # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
+            hitted = game.shoot(player, payload['pos'])
+            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted})
+        elif command == COM_OPPONENT_SHOT:
+            shotted, pos = game.opponentShotted(player)
+            self._sendResponse(conn, player.id, COM_OPPONENT_SHOT, {'shotted': shotted, 'pos': pos})
         else:
             return False
         return True
@@ -127,7 +159,7 @@ class Server:
             self._sendResponse(conn, player.id, COM_CONNECT, {'id': player.id})
             return
 
-        assert player.id in self.players, 'incoming id is not in self.players'
+        assert isinstance(player, ConnectedPlayer), 'incoming id is not in self.players'
         player.lastReqTime = time.time()
 
         if self.handleQueriesOutGame(conn, player, command, payload):
@@ -154,7 +186,7 @@ class Server:
         else:
             self.players.pop(player.id)
     def endGame(self, game: Game):
-        logging.info(f'ending game id={game.id}')
+        logging.info(f'ending game id {game.id}')
         for pid in game.players.keys():
             assert pid in self.players, 'all players in a game should be in connected players'
             self.players.pop(pid)
