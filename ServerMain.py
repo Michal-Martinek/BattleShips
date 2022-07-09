@@ -139,8 +139,7 @@ class Server:
             assert player.shootingReady(), 'Don\'t expect a COM_GAME_WAIT from player without being ready'
             if game.canStartShooting():
                 game.startShooting()
-            # TODO: we should not send the opponents state
-            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn, 'opponent_state': game.getOpponentState(player)})
+            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn})
         elif command == COM_SHOOT:
             # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
             hitted, wholeShip = game.shoot(player, payload['pos'])

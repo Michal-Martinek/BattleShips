@@ -36,12 +36,12 @@ class Session:
     def sendReadyForGame(self, state: dict):
         ret = self._makeReq(COM_GAME_READINESS, state)
         return ret['approved']
-    def waitForGame(self) -> tuple[dict, bool]:
+    def waitForGame(self) -> tuple[bool, bool]:
         if self.timers[COM_GAME_WAIT] < time.time()-self.TIME_BETWEEN_REQUESTS:
             res = self._makeReq(COM_GAME_WAIT, updateTimer=COM_GAME_WAIT)
             if res['started']:
-                return res['opponent_state'], res['on_turn'] == self.id
-        return None
+                return True, res['on_turn'] == self.id
+        return False, False
     def opponentShot(self) -> tuple[int, int]:
         if self.timers[COM_OPPONENT_SHOT] < time.time()-self.TIME_BETWEEN_REQUESTS:
             res = self._makeReq(COM_OPPONENT_SHOT, updateTimer=COM_OPPONENT_SHOT)

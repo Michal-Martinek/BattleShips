@@ -7,8 +7,7 @@ class Game:
         self.session = Session()
         logging.info(f'connected to the server, id={self.session.id}')
         self.grid = Grid()
-        self.readyForGame: bool = False # signalizes that the player has done playcing the ships and wants to start the game
-        self.opponentsGrid = None
+        self.readyForGame: bool = False
         self.onTurn: bool = False
     def newGameStage(self):
         self.session.resetAllTimers()
@@ -49,12 +48,10 @@ class Game:
                 self.readyForGame = not self.readyForGame
                 logging.debug('toggling readyForGame')
     def waitForGame(self) -> bool:
-        info = self.session.waitForGame()
-        if info is not None:
-            self.opponentsGrid = Grid.fromShipsDicts(info[0]['ships'])
-            self.onTurn = info[1]
-            return False
-        return True
+        started, onTurn = self.session.waitForGame()
+        if started:
+            self.onTurn = onTurn
+        return not started
     def opponentShot(self):
         pos = self.session.opponentShot()
         if pos is not None:
@@ -73,22 +70,21 @@ class Game:
         return self.session.ensureConnection()
 
 class Grid:
+    SHOTS_NOT_SHOTTED = 0
+    SHOTS_HITTED = 1
+    SHOTS_NOT_HITTED = 2
+    SHOTS_BLOCKED = 3
+    SHOTS_SHOTTED_UNKNOWN = 4
+
     def __init__(self):
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
         self.flyingShip: Ship = Ship([-1, -1], 0, True)
         self.placedShips: list[Ship] = []
-        self.shotedMap =  [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
-        self.hittedMap =  [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
-        self.blockedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.shottedMap =  [[self.SHOTS_NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
         self.wholeHittedShips: list[Ship] = []
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
-    @ classmethod
-    def fromShipsDicts(cls, dicts: list[dict]):
-        grid = Grid()
-        grid.placedShips = [Ship.fromDict(d) for d in dicts]
-        return grid
     def allShipsPlaced(self):
             return not any(self.shipSizes.values()) 
 
@@ -172,25 +168,25 @@ class Grid:
         return False
     def shoot(self, mousePos):
         clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
-        if self.shotedMap[clickedY][clickedX] or self.blockedMap[clickedY][clickedX]:
+        if self.shottedMap[clickedY][clickedX] != self.SHOTS_NOT_SHOTTED:
             return False
-        self.shotedMap[clickedY][clickedX] = True
+        self.shottedMap[clickedY][clickedX] = self.SHOTS_SHOTTED_UNKNOWN
         return [clickedX, clickedY]
     def updateHitted(self, pos, hitted, wholeShip):
-        self.hittedMap[pos[1]][pos[0]] = hitted
+        assert self.shottedMap[pos[1]][pos[0]] == self.SHOTS_SHOTTED_UNKNOWN
+        self.shottedMap[pos[1]][pos[0]] = [self.SHOTS_NOT_HITTED, self.SHOTS_HITTED][hitted]
         if wholeShip:
             ship = Ship.fromDict(wholeShip)
             assert all(ship.hitted)
             self.wholeHittedShips.append(ship)
-
-            rect = ship.getnoShipsRect()
+            self.markBlocked(ship)
+    def markBlocked(self, ship):
+            rect: pygame.Rect = ship.getnoShipsRect()
             rect = rect.clip(pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
-            print('update', rect)
             for x in range(rect.x, rect.x + rect.width):
                 for y in range(rect.y, rect.y + rect.height):
-                    print('update hitted iteration, (x, y):', x, y)
-                    if not self.hittedMap[y][x]:
-                        self.blockedMap[y][x] = True
+                    if self.shottedMap[y][x] == self.SHOTS_NOT_SHOTTED:
+                        self.shottedMap[y][x] = self.SHOTS_BLOCKED
 
     def drawGrid(self, window):
         self.drawGridlines(window)
@@ -200,17 +196,16 @@ class Grid:
             self.flyingShip.draw(window)
     def drawShotted(self, window):
         self.drawGridlines(window)
-        for y, lineShotted in enumerate(self.shotedMap):
+        for y, lineShotted in enumerate(self.shottedMap):
             for x, shotted in enumerate(lineShotted):
-                if shotted:
-                    pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
-                    color = [(0, 0, 255), (255, 0, 0)][self.hittedMap[y][x]]
-                    pygame.draw.circle(window, color, pos, Constants.GRID_X_SPACING // 4)
-        for y, line in enumerate(self.blockedMap):
-            for x, blocked in enumerate(line):
-                if blocked:
-                    pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+                pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+                if shotted == self.SHOTS_HITTED:
+                    pygame.draw.circle(window, (255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+                elif shotted == self.SHOTS_NOT_HITTED:
+                    pygame.draw.circle(window, (0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
+                elif shotted == self.SHOTS_BLOCKED:
                     pygame.draw.circle(window, (128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
+
         for ship in self.wholeHittedShips:
             ship.drawWholeHitted(window)
         
