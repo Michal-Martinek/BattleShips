@@ -64,8 +64,8 @@ class Game:
         if self.onTurn:
             gridPos = self.grid.shoot(mousePos)
             if gridPos:
-                hitted = self.session.shoot(gridPos)
-                self.grid.updateHitted(gridPos, hitted)
+                hitted, wholeShip = self.session.shoot(gridPos)
+                self.grid.updateHitted(gridPos, hitted, wholeShip)
                 self.onTurn = False
     def lookForOpponent(self):
         return self.session.lookForOpponent()
@@ -77,8 +77,10 @@ class Grid:
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
         self.flyingShip: Ship = Ship([-1, -1], 0, True)
         self.placedShips: list[Ship] = []
-        self.shotedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
-        self.hittedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.shotedMap =  [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.hittedMap =  [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.blockedMap = [[False] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.wholeHittedShips: list[Ship] = []
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
@@ -170,12 +172,25 @@ class Grid:
         return False
     def shoot(self, mousePos):
         clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
-        if self.shotedMap[clickedY][clickedX]:
+        if self.shotedMap[clickedY][clickedX] or self.blockedMap[clickedY][clickedX]:
             return False
         self.shotedMap[clickedY][clickedX] = True
         return [clickedX, clickedY]
-    def updateHitted(self, pos, hitted):
+    def updateHitted(self, pos, hitted, wholeShip):
         self.hittedMap[pos[1]][pos[0]] = hitted
+        if wholeShip:
+            ship = Ship.fromDict(wholeShip)
+            assert all(ship.hitted)
+            self.wholeHittedShips.append(ship)
+
+            rect = ship.getnoShipsRect()
+            rect = rect.clip(pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
+            print('update', rect)
+            for x in range(rect.x, rect.x + rect.width):
+                for y in range(rect.y, rect.y + rect.height):
+                    print('update hitted iteration, (x, y):', x, y)
+                    if not self.hittedMap[y][x]:
+                        self.blockedMap[y][x] = True
 
     def drawGrid(self, window):
         self.drawGridlines(window)
@@ -191,6 +206,14 @@ class Grid:
                     pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
                     color = [(0, 0, 255), (255, 0, 0)][self.hittedMap[y][x]]
                     pygame.draw.circle(window, color, pos, Constants.GRID_X_SPACING // 4)
+        for y, line in enumerate(self.blockedMap):
+            for x, blocked in enumerate(line):
+                if blocked:
+                    pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+                    pygame.draw.circle(window, (128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
+        for ship in self.wholeHittedShips:
+            ship.drawWholeHitted(window)
+        
     def drawGridlines(self, window):
         for row in range(Constants.GRID_HEIGHT):
             yCoord = Constants.GRID_Y_SPACING * row
@@ -284,3 +307,12 @@ class Ship:
                 pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
                 pygame.draw.circle(window, (255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
         pygame.draw.rect(window, (0, 0, 0), self.realRect, 4)
+    def drawWholeHitted(self, window):
+        for (x, y) in self.getRealSegmentCoords():
+            pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
+            pygame.draw.circle(window, (0, 0, 0), pos, Constants.GRID_X_SPACING // 8)
+        
+        pos = self.realPos
+        start = pos[0] + Constants.GRID_X_SPACING // 2, pos[1] + Constants.GRID_Y_SPACING // 2
+        end = pos[0] + (self.widthInGrid - 1) * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, pos[1] + (self.heightInGrid - 1) * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2
+        pygame.draw.line(window, (0, 0, 0), start, end, 3)

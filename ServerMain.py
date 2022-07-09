@@ -69,7 +69,7 @@ class Game:
         if shotted:
             self.swapTurn()
         return shotted, pos
-    def shoot(self, player, pos) -> bool:
+    def shoot(self, player, pos) -> tuple[bool, dict]:
         assert player.id == self.playerOnTurn, 'only player on turn can shoot'
         self.shottedPos = pos
         for ship in self.getOpponentState(player)['ships']:
@@ -77,8 +77,11 @@ class Game:
             horizontal = ship['horizontal']
             size = ship['size']
             if (x <= pos[0] <= x + (size - 1) * horizontal) and (y <= pos[1] <= y + (size - 1) * (not horizontal)):
-                return True
-        return False
+                hittedSpot = (pos[0] - x) if horizontal else (pos[1] - y)
+                ship['hitted'][hittedSpot] = True
+                wholeShip = ship if all(ship['hitted']) else None
+                return True, wholeShip
+        return False, None
 
 
 class Server:
@@ -140,8 +143,8 @@ class Server:
             self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn, 'opponent_state': game.getOpponentState(player)})
         elif command == COM_SHOOT:
             # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
-            hitted = game.shoot(player, payload['pos'])
-            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted})
+            hitted, wholeShip = game.shoot(player, payload['pos'])
+            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted, 'whole_ship': wholeShip})
         elif command == COM_OPPONENT_SHOT:
             shotted, pos = game.opponentShotted(player)
             self._sendResponse(conn, player.id, COM_OPPONENT_SHOT, {'shotted': shotted, 'pos': pos})

@@ -49,9 +49,9 @@ class Session:
                 assert res['pos'] != (-1, -1)
                 return res['pos']
         return None
-    def shoot(self, pos) -> bool:
+    def shoot(self, pos) -> tuple[bool, dict]:
         res = self._makeReq(COM_SHOOT, {'pos': pos})
-        return res['hitted']
+        return res['hitted'], res['whole_ship']
     
     # internals -------------------------------------
     def _makeReq(self, command, payload: dict=dict(), *, updateTimer:str='') -> dict:
@@ -70,5 +70,6 @@ class Session:
         s.connect(self.SERVER_ADDRES)
         return s
     def _connect(self):
+        # TODO: if the server doesn't exist on the addr then this hangs
         res = self._makeReq(COM_CONNECT)
         self.id = res['id']
