@@ -1,4 +1,4 @@
-import os
+import os, sys
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import logging
@@ -36,6 +36,8 @@ def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
     return False
 def placeStage(screen: pygame.Surface, game: Game.Game):
     game.newGameStage()
+    autoPlace = '--autoplace' in sys.argv
+    
     font = pygame.font.SysFont('arial', 40)
     clockObj = pygame.time.Clock()
 
@@ -64,6 +66,8 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
                 elif event.button == 5: # scroll down
                     game.changeShipSize(-1)
 
+        if autoPlace and not game.readyForGame:
+            game.autoplace()
         # connection ---------------------------
         if not game.ensureConnection():
             gameRunning = False

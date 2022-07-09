@@ -38,6 +38,11 @@ class Game:
     def drawOutTurn(self, window):
         self.grid.drawGrid(window)
 
+    def autoplace(self):
+        assert not self.readyForGame
+        self.grid.autoplace()
+        self.toggleGameReady()
+        assert self.readyForGame
     def quit(self):
         self.session.close()
     def toggleGameReady(self):
@@ -125,6 +130,17 @@ class Grid:
             self.shipSizes[placed.size] -= 1
             self.changeSize(+1, canBeSame=True)
         return canPlace
+    def autoplace(self):
+        if self.shipSizes == {1: 2, 2: 4, 3: 2, 4: 1}:
+            self.flyingShip.setSize(0)
+            dicts = [{'pos': [3, 0], 'size': 2, 'horizontal': True, 'hitted': [False, False]}, {'pos': [4, 3], 'size': 2, 'horizontal': False, 'hitted': [False, False]}, {'pos': [5, 7], 'size': 3, 'horizontal': True, 'hitted': [False, False, False]}, {'pos': [1, 5], 'size': 4, 'horizontal': False, 'hitted': [False, False, False, False]}, {'pos': [8, 4], 'size': 1, 'horizontal': True, 'hitted': [False]}, {'pos': [6, 1], 'size': 1, 'horizontal': False, 'hitted': [False]}, {'pos': [5, 9], 'size': 2, 'horizontal': True, 'hitted': [False, False]}, {'pos': [1, 1], 'size': 2, 'horizontal': False, 'hitted': [False, False]}, {'pos': [9, 0], 'size': 3, 'horizontal': False, 'hitted': [False, False, False]}]
+            for d in dicts:
+                ship = Ship.fromDict(d)
+                self.placedShips.append(ship)
+                self.shipSizes[ship.size] -= 1
+            assert self.allShipsPlaced(), 'autoplace is expected to place all ships'
+        else:
+            logging.warning('Couldn\'t autoplace ships, because shipSizes isn\'t as expected')
 
     def pickUpShip(self, mousePos) -> bool:
         ship = self._getClickedShip(mousePos)
