@@ -1,6 +1,7 @@
 import socket, random, time, logging
 from typing import Union
 from Shared import ConnectionPrimitives
+from Shared.Enums import STAGES
 from Shared.CommandNames import *
 
 class ConnectedPlayer:
@@ -21,14 +22,10 @@ class ConnectedPlayer:
         self.connected = False
 
 class Game:
-    STAGE_PLACING = 1
-    STAGE_SHOOTING = 2
-    STAGE_END = 3
-
     def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer):
         self.id: int = id
         self.gameActive: bool = True
-        self.gameStage: int = Game.STAGE_PLACING
+        self.gameStage: int = STAGES.PLACING
         self.players: dict[int, ConnectedPlayer] = {player1.id: player1, player2.id: player2}
         self.setPlayersForGame()
         self.playerOnTurn: int = 0
@@ -58,17 +55,17 @@ class Game:
         player.disconnect()
         self.gameActive = False
     def canStartShooting(self):
-        return self.gameStage == self.STAGE_PLACING and all([p.shootingReady() for p in self.players.values()])
+        return self.gameStage == STAGES.PLACING and all([p.shootingReady() for p in self.players.values()])
     def startShooting(self):
-        assert self.gameStage == self.STAGE_PLACING, 'Game needs to be in the placing stage to be started'
+        assert self.gameStage == STAGES.PLACING, 'Game needs to be in the placing stage to be started'
         logging.info(f'starting game id {self.id}')
-        self.gameStage = self.STAGE_SHOOTING
+        self.gameStage = STAGES.SHOOTING
         self.playerOnTurn = random.choice(list(self.players.keys()))
     def opponentShotted(self, player: ConnectedPlayer) -> tuple[bool, list[int], bool]:
         '''@return (bool - opponent shotted already, list[int] - where opponent shotted, bool - if you lost'''
         shotted = self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
         pos = self.shottedPos
-        lost = self.gameStage == Game.STAGE_END
+        lost = self.gameStage == STAGES.END
         if shotted:
             self.swapTurn()
         if lost:
@@ -92,7 +89,7 @@ class Game:
                 return True, wholeShip, gameWon
         return False, None, False
     def gameWon(self):
-        self.gameStage = Game.STAGE_END
+        self.gameStage = STAGES.END
 
 
 class Server:
@@ -142,7 +139,7 @@ class Server:
         @return True if the command was recognized'''
         if command == COM_GAME_READINESS:
             approved = False
-            if payload['ready'] or game.gameStage == game.STAGE_PLACING:
+            if payload['ready'] or game.gameStage == STAGES.PLACING:
                 game.updateGameState(player, payload)
                 approved = True
             self._sendResponse(conn, player.id, COM_GAME_READINESS, {'approved': approved})
@@ -150,7 +147,7 @@ class Server:
             assert player.shootingReady(), 'Don\'t expect a COM_GAME_WAIT from player without being ready'
             if game.canStartShooting():
                 game.startShooting()
-            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn})
+            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == STAGES.SHOOTING, 'on_turn': game.playerOnTurn})
         elif command == COM_SHOOT:
             # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
             hitted, wholeShip, gameWon = game.shoot(player, payload['pos'])

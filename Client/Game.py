@@ -1,6 +1,7 @@
 import pygame, logging
 from . import Constants
 from .Session import Session
+from Shared.Enums import SHOTS, STAGES
 
 class Game:
     def __init__(self):
@@ -78,17 +79,11 @@ class Game:
         return self.session.ensureConnection()
 
 class Grid:
-    SHOTS_NOT_SHOTTED = 0
-    SHOTS_HITTED = 1
-    SHOTS_NOT_HITTED = 2
-    SHOTS_BLOCKED = 3
-    SHOTS_SHOTTED_UNKNOWN = 4
-
     def __init__(self):
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
         self.flyingShip: Ship = Ship([-1, -1], 0, True)
         self.placedShips: list[Ship] = []
-        self.shottedMap =  [[self.SHOTS_NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+        self.shottedMap =  [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
         self.wholeHittedShips: list[Ship] = []
 
     def shipsDicts(self):
@@ -187,13 +182,13 @@ class Grid:
         return False
     def shoot(self, mousePos):
         clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
-        if self.shottedMap[clickedY][clickedX] != self.SHOTS_NOT_SHOTTED:
+        if self.shottedMap[clickedY][clickedX] != SHOTS.NOT_SHOTTED:
             return False
-        self.shottedMap[clickedY][clickedX] = self.SHOTS_SHOTTED_UNKNOWN
+        self.shottedMap[clickedY][clickedX] = SHOTS.SHOTTED_UNKNOWN
         return [clickedX, clickedY]
     def updateHitted(self, pos, hitted, wholeShip):
-        assert self.shottedMap[pos[1]][pos[0]] == self.SHOTS_SHOTTED_UNKNOWN
-        self.shottedMap[pos[1]][pos[0]] = [self.SHOTS_NOT_HITTED, self.SHOTS_HITTED][hitted]
+        assert self.shottedMap[pos[1]][pos[0]] == SHOTS.SHOTTED_UNKNOWN
+        self.shottedMap[pos[1]][pos[0]] = [SHOTS.NOT_HITTED, SHOTS.HITTED][hitted]
         if wholeShip:
             ship = Ship.fromDict(wholeShip)
             assert all(ship.hitted)
@@ -218,11 +213,11 @@ class Grid:
         for y, lineShotted in enumerate(self.shottedMap):
             for x, shotted in enumerate(lineShotted):
                 pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
-                if shotted == self.SHOTS_HITTED:
+                if shotted == SHOTS.HITTED:
                     pygame.draw.circle(window, (255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
-                elif shotted == self.SHOTS_NOT_HITTED:
+                elif shotted == SHOTS.NOT_HITTED:
                     pygame.draw.circle(window, (0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
-                elif shotted == self.SHOTS_BLOCKED:
+                elif shotted == SHOTS.BLOCKED:
                     pygame.draw.circle(window, (128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
         for ship in self.wholeHittedShips:
