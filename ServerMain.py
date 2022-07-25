@@ -23,6 +23,7 @@ class ConnectedPlayer:
 class Game:
     STAGE_PLACING = 1
     STAGE_SHOOTING = 2
+    STAGE_END = 3
 
     def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer):
         self.id: int = id
@@ -63,13 +64,20 @@ class Game:
         logging.info(f'starting game id {self.id}')
         self.gameStage = self.STAGE_SHOOTING
         self.playerOnTurn = random.choice(list(self.players.keys()))
-    def opponentShotted(self, player: ConnectedPlayer) -> tuple[bool, list[int]]:
+    def opponentShotted(self, player: ConnectedPlayer) -> tuple[bool, list[int], bool]:
+        '''@return (bool - opponent shotted already, list[int] - where opponent shotted, bool - if you lost'''
         shotted = self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
         pos = self.shottedPos
+        lost = self.gameStage == Game.STAGE_END
         if shotted:
             self.swapTurn()
-        return shotted, pos
-    def shoot(self, player, pos) -> tuple[bool, dict]:
+        if lost:
+            self.gameActive = False
+        return shotted, pos, lost
+    def shoot(self, player, pos) -> tuple[bool, dict, bool]:
+        '''@player - player who shotted
+        @pos - (x, y) pos where did he shoot
+        @return (bool - hitted, dict - whole ship hitted if any, bool - game won)'''
         assert player.id == self.playerOnTurn, 'only player on turn can shoot'
         self.shottedPos = pos
         for ship in self.getOpponentState(player)['ships']:
@@ -80,8 +88,11 @@ class Game:
                 hittedSpot = (pos[0] - x) if horizontal else (pos[1] - y)
                 ship['hitted'][hittedSpot] = True
                 wholeShip = ship if all(ship['hitted']) else None
-                return True, wholeShip
-        return False, None
+                gameWon = all([all(ship['hitted']) for ship in self.getOpponentState(player)['ships']])
+                return True, wholeShip, gameWon
+        return False, None, False
+    def gameWon(self):
+        self.gameStage = Game.STAGE_END
 
 
 class Server:
@@ -142,11 +153,13 @@ class Server:
             self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == game.STAGE_SHOOTING, 'on_turn': game.playerOnTurn})
         elif command == COM_SHOOT:
             # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
-            hitted, wholeShip = game.shoot(player, payload['pos'])
-            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted, 'whole_ship': wholeShip})
+            hitted, wholeShip, gameWon = game.shoot(player, payload['pos'])
+            if gameWon:
+                game.gameWon()
+            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
         elif command == COM_OPPONENT_SHOT:
-            shotted, pos = game.opponentShotted(player)
-            self._sendResponse(conn, player.id, COM_OPPONENT_SHOT, {'shotted': shotted, 'pos': pos})
+            shotted, pos, lost = game.opponentShotted(player)
+            self._sendResponse(conn, player.id, COM_OPPONENT_SHOT, {'shotted': shotted, 'pos': pos, 'lost': lost})
         else:
             return False
         return True

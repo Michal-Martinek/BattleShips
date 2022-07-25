@@ -42,16 +42,16 @@ class Session:
             if res['started']:
                 return True, res['on_turn'] == self.id
         return False, False
-    def opponentShot(self) -> tuple[int, int]:
+    def opponentShot(self) -> tuple[tuple[int, int], bool]:
         if self.timers[COM_OPPONENT_SHOT] < time.time()-self.TIME_BETWEEN_REQUESTS:
             res = self._makeReq(COM_OPPONENT_SHOT, updateTimer=COM_OPPONENT_SHOT)
             if res['shotted']:
                 assert res['pos'] != (-1, -1)
-                return res['pos']
-        return None
-    def shoot(self, pos) -> tuple[bool, dict]:
+                return res['pos'], res['lost']
+        return None, False
+    def shoot(self, pos) -> tuple[bool, dict, bool]:
         res = self._makeReq(COM_SHOOT, {'pos': pos})
-        return res['hitted'], res['whole_ship']
+        return res['hitted'], res['whole_ship'], res['game_won']
     
     # internals -------------------------------------
     def _makeReq(self, command, payload: dict=dict(), *, updateTimer:str='') -> dict:

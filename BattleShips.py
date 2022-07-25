@@ -8,35 +8,43 @@ def game():
     pygame.init()
     logging.basicConfig(level=logging.INFO)
     screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
-
     game = Game.Game()
+    gameWon = True
+    gameExited = True
+
     if pairingWait(screen, game):
         logging.info(f'paired with player id {game.session.opponentId}, starting place stage')
-        if placeStage(screen, game):
+        startShooting, gameExited = placeStage(screen, game)
+        if startShooting and not gameExited:
             logging.info('starting shooting stage')
-            shootingStage(screen, game)
-
+            gameWon, gameExited = shootingStage(screen, game)
+    
     game.quit()
+    if not gameExited:
+        endingScreen(screen, gameWon)
     pygame.quit()
 def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
     game.newGameStage()
     clockObj = pygame.time.Clock()
     font = pygame.font.SysFont('arial', 60)
+    opponentFound = False
     gameRunning = True
     while gameRunning:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
         if game.lookForOpponent():
-            return True
+            gameRunning = False
+            opponentFound = True
         screen.fill((255, 255, 255))
         screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return False
+    return opponentFound
 def placeStage(screen: pygame.Surface, game: Game.Game):
     game.newGameStage()
-    autoPlace = '--autoplace' in sys.argv
+    if '--autoplace' in sys.argv:
+        game.autoplace()
     
     font = pygame.font.SysFont('arial', 40)
     clockObj = pygame.time.Clock()
@@ -66,38 +74,43 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
                 elif event.button == 5: # scroll down
                     game.changeShipSize(-1)
 
-        if autoPlace and not game.readyForGame:
-            game.autoplace()
         # connection ---------------------------
         if not game.ensureConnection():
             gameRunning = False
-        if game.readyForGame and gameRunning:
+            game.readyForGame = False
+        if game.readyForGame and not exited:
             gameRunning = game.waitForGame()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
         game.drawGame(screen, font)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return game.readyForGame and not exited
-def shootingStage(screen: pygame.Surface, game: Game.Game):
+    return game.readyForGame, exited
+def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
     game.newGameStage()
     clockObj = pygame.time.Clock()
-
+    gameWon = True
+    exited = False
     gameRunning = True
     while gameRunning:
         # controls ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
+                exited = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    game.shoot(event.pos)
+                    if game.shoot(event.pos):
+                        gameWon = True
+                        gameRunning = False
 
         # connection ---------------------------
         if not game.ensureConnection():
             gameRunning = False
         if not game.onTurn:
-            game.opponentShot()
+            if game.opponentShot():
+                gameWon = False
+                gameRunning = False
         
         # drawing -----------------------------
         screen.fill((255, 255, 255))
@@ -107,6 +120,26 @@ def shootingStage(screen: pygame.Surface, game: Game.Game):
             game.drawOutTurn(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
+    return gameWon, exited
+
+def endingScreen(screen: pygame.Surface, gameWon: bool):
+    clockObj = pygame.time.Clock()
+    font = pygame.font.SysFont('arial', 60)
+
+    # drawing the message
+    message = ['You lost!   :(', 'You won!   :)'][gameWon]
+    screen.fill((255, 255, 255))
+    screen.blit(font.render(message, True, (0,0,0)), (150, 300))
+    pygame.display.update()
+
+    time = 0
+    while time <= Constants.FPS * 5:
+        for event in pygame.event.get():
+            if event.type in [pygame.QUIT, pygame.KEYDOWN]:
+                return
+        time += 1
+        clockObj.tick(Constants.FPS)
+
 
 if __name__ == '__main__':
     game()

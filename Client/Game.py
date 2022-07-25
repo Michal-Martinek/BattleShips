@@ -57,18 +57,21 @@ class Game:
         if started:
             self.onTurn = onTurn
         return not started
-    def opponentShot(self):
-        pos = self.session.opponentShot()
+    def opponentShot(self) -> bool:
+        pos, lost = self.session.opponentShot()
         if pos is not None:
             self.grid.opponentShot(pos)
             self.onTurn = True
-    def shoot(self, mousePos):
+        return lost
+    def shoot(self, mousePos) -> bool:
         if self.onTurn:
             gridPos = self.grid.shoot(mousePos)
             if gridPos:
-                hitted, wholeShip = self.session.shoot(gridPos)
+                hitted, wholeShip, gameWon = self.session.shoot(gridPos)
                 self.grid.updateHitted(gridPos, hitted, wholeShip)
                 self.onTurn = False
+                return gameWon
+        return False
     def lookForOpponent(self):
         return self.session.lookForOpponent()
     def ensureConnection(self):
