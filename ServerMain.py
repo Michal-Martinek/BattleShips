@@ -1,8 +1,7 @@
 import socket, random, time, logging
 from typing import Union
 from Shared import ConnectionPrimitives
-from Shared.Enums import STAGES
-from Shared.CommandNames import *
+from Shared.Enums import STAGES, COM
 
 class ConnectedPlayer:
     def __init__(self, id: int):
@@ -117,19 +116,19 @@ class Server:
     def handleQueriesOutGame(self, conn: socket.socket, player: ConnectedPlayer, command: str, payload: dict) -> bool:
         '''handles requests from players who aren't necessary in a game
         @return True if the command was recognized'''
-        if command == COM_DISCONNECT:
+        if command == COM.DISCONNECT:
             self.disconnectPlayer(player)
-            self._sendResponse(conn, player.id, COM_DISCONNECT)
-        elif command == COM_PAIR:
+            self._sendResponse(conn, player.id, COM.DISCONNECT)
+        elif command == COM.PAIR:
             game = self.pairPlayer(conn, player)
             if game:
                 self.games[game.id] = game
-        elif command == COM_CONNECTION_CHECK:
+        elif command == COM.CONNECTION_CHECK:
             stayConnected = not player.inGame
             if player.inGame:
                 game = self.games[player.gameId]
                 stayConnected = game.gameActive
-            self._sendResponse(conn, player.id, COM_CONNECTION_CHECK, {'stay_connected': stayConnected})
+            self._sendResponse(conn, player.id, COM.CONNECTION_CHECK, {'stay_connected': stayConnected})
         else:
             return False
         return True
@@ -137,38 +136,38 @@ class Server:
     def handleQueriesInGame(self, conn: socket.socket, player: ConnectedPlayer, command: str, payload: dict, game: Game) -> bool:
         '''handles queries from players who should be in a game
         @return True if the command was recognized'''
-        if command == COM_GAME_READINESS:
+        if command == COM.GAME_READINESS:
             approved = False
             if payload['ready'] or game.gameStage == STAGES.PLACING:
                 game.updateGameState(player, payload)
                 approved = True
-            self._sendResponse(conn, player.id, COM_GAME_READINESS, {'approved': approved})
-        elif command == COM_GAME_WAIT:
-            assert player.shootingReady(), 'Don\'t expect a COM_GAME_WAIT from player without being ready'
+            self._sendResponse(conn, player.id, COM.GAME_READINESS, {'approved': approved})
+        elif command == COM.GAME_WAIT:
+            assert player.shootingReady(), 'Don\'t expect a COM.GAME_WAIT from player without being ready'
             if game.canStartShooting():
                 game.startShooting()
-            self._sendResponse(conn, player.id, COM_GAME_WAIT, {'started': game.gameStage == STAGES.SHOOTING, 'on_turn': game.playerOnTurn})
-        elif command == COM_SHOOT:
-            # NOTE: when the player on turn shoot before the other player makes COM_OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
+            self._sendResponse(conn, player.id, COM.GAME_WAIT, {'started': game.gameStage == STAGES.SHOOTING, 'on_turn': game.playerOnTurn})
+        elif command == COM.SHOOT:
+            # NOTE: when the player on turn shoot before the other player makes COM.OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
             hitted, wholeShip, gameWon = game.shoot(player, payload['pos'])
             if gameWon:
                 game.gameWon()
-            self._sendResponse(conn, player.id, COM_SHOOT, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
-        elif command == COM_OPPONENT_SHOT:
+            self._sendResponse(conn, player.id, COM.SHOOT, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
+        elif command == COM.OPPONENT_SHOT:
             shotted, pos, lost = game.opponentShotted(player)
-            self._sendResponse(conn, player.id, COM_OPPONENT_SHOT, {'shotted': shotted, 'pos': pos, 'lost': lost})
+            self._sendResponse(conn, player.id, COM.OPPONENT_SHOT, {'shotted': shotted, 'pos': pos, 'lost': lost})
         else:
             return False
         return True
     def handleQuery(self, conn: socket.socket):
         player, command, payload = self._recvQuery(conn)
         
-        if command == COM_CONNECT:
+        if command == COM.CONNECT:
             logging.info(f'connecting new player from {conn.getpeername()}')
             player = self.newConnectedPlayer()
             assert player.id not in self.players
             self.players[player.id] = player
-            self._sendResponse(conn, player.id, COM_CONNECT, {'id': player.id})
+            self._sendResponse(conn, player.id, COM.CONNECT, {'id': player.id})
             return
 
         assert isinstance(player, ConnectedPlayer), 'incoming id is not in self.players'
@@ -219,7 +218,7 @@ class Server:
 
         failed = game is None
         opponentId = 0 if failed else game.getOpponent(player).id
-        self._sendResponse(conn, player.id, COM_PAIR, {'paired': not failed, 'opponent_id': opponentId})
+        self._sendResponse(conn, player.id, COM.PAIR, {'paired': not failed, 'opponent_id': opponentId})
         return game
 
     def newConnectedPlayer(self):

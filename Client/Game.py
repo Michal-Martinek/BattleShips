@@ -199,8 +199,8 @@ class Grid:
             rect = rect.clip(pygame.Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
             for x in range(rect.x, rect.x + rect.width):
                 for y in range(rect.y, rect.y + rect.height):
-                    if self.shottedMap[y][x] == self.SHOTS_NOT_SHOTTED:
-                        self.shottedMap[y][x] = self.SHOTS_BLOCKED
+                    if self.shottedMap[y][x] == SHOTS.NOT_SHOTTED:
+                        self.shottedMap[y][x] = SHOTS.BLOCKED
 
     def drawGrid(self, window):
         self.drawGridlines(window)
