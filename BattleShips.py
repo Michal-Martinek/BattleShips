@@ -13,7 +13,7 @@ def game():
     gameExited = True
 
     if pairingWait(screen, game):
-        logging.info(f'paired with player id {game.session.opponentId}, starting place stage')
+        logging.info(f'paired, starting place stage')
         startShooting, gameExited = placeStage(screen, game)
         if startShooting and not gameExited:
             logging.info('starting shooting stage')
@@ -24,25 +24,22 @@ def game():
         endingScreen(screen, gameWon)
     pygame.quit()
 def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
-    game.newGameStage()
     clockObj = pygame.time.Clock()
+    # drawing
     font = pygame.font.SysFont('arial', 60)
-    opponentFound = False
+    screen.fill((255, 255, 255))
+    screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
+    pygame.display.update()
+
     gameRunning = True
-    while gameRunning:
+    while gameRunning and not game.opponentFound():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
-        if game.lookForOpponent():
-            gameRunning = False
-            opponentFound = True
-        screen.fill((255, 255, 255))
-        screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
-        pygame.display.update()
+        game.tryRequests()
         clockObj.tick(Constants.FPS)
-    return opponentFound
+    return game.opponentFound()
 def placeStage(screen: pygame.Surface, game: Game.Game):
-    game.newGameStage()
     if '--autoplace' in sys.argv:
         game.autoplace()
     
@@ -75,11 +72,12 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
                     game.changeShipSize(-1)
 
         # connection ---------------------------
-        if not game.ensureConnection():
+        game.tryRequests()
+        if not game.stayConnected():
             gameRunning = False
             game.readyForGame = False
         if game.readyForGame and not exited:
-            gameRunning = game.waitForGame()
+            gameRunning = not game.shootingStarted()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
         game.drawGame(screen, font)
@@ -87,7 +85,6 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
         clockObj.tick(Constants.FPS)
     return game.readyForGame, exited
 def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
-    game.newGameStage()
     clockObj = pygame.time.Clock()
     gameWon = True
     exited = False
@@ -105,7 +102,8 @@ def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
                         gameRunning = False
 
         # connection ---------------------------
-        if not game.ensureConnection():
+        game.tryRequests()
+        if not game.stayConnected():
             gameRunning = False
         if not game.onTurn:
             if game.opponentShot():
