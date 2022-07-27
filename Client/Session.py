@@ -3,6 +3,7 @@ from Shared import ConnectionPrimitives
 from Shared.Enums import COM
 from queue import Queue, Empty
 import threading
+import logging
 import enum, typing
 
 class Session:
@@ -29,6 +30,7 @@ class Session:
     def resetAllTimers(self):
         self.timers = {COM.CONNECTION_CHECK: 0.0, COM.PAIR: 0.0, COM.GAME_WAIT: 0.0, COM.OPPONENT_SHOT: 0.0}
     def close(self):
+        logging.debug('joining the requests Thread and disconnecting from the server')
         self.endEvent.set()
         self.reqThread.join()
         self._makeReq(COM.DISCONNECT)
@@ -54,6 +56,7 @@ class Session:
     def shoot(self, pos, callback) -> tuple[bool, dict, bool]:
         self.putReq(COM.SHOOT, {'pos': pos}, callback)
 
+    # multithreaded ------------------------------------
     def loadResponses(self):
         self.responseLock.acquire()
         ress = self.responseList
@@ -63,12 +66,11 @@ class Session:
         for res, callback in ress:
             callback(res)
 
-    # multithreaded ------------------------------------
     def reqLoop(self):
         # TODO: handle requests asyncly
-        while not self.endEvent.is_set():
+        while not self.endEvent.is_set() and threading.main_thread().is_alive():
             try:
-                command, payload, callback = self.reqQueue.get(timeout=1)
+                command, payload, callback = self.reqQueue.get(timeout=0.2)
                 res = self._makeReq(command, payload)
                 self.responseLock.acquire()
                 self.responseList.append((res, callback))

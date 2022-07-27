@@ -185,7 +185,8 @@ class Server:
     def checkConnections(self):
         for player in self.players.copy().values():
             if time.time() - player.lastReqTime > self.MAX_TIME_FOR_DISCONNECT:
-                self.disconnectPlayer(player)
+                if player.connected:
+                    self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player: ConnectedPlayer):
         logging.info(f'disconnecting player {player.id}')
