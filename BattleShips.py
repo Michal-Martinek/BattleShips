@@ -3,13 +3,13 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import logging
 from Client import Game, Constants
+from Shared.Enums import STAGES
 
 def game():
     pygame.init()
     logging.basicConfig(level=logging.INFO)
     screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
     game = Game.Game()
-    gameWon = True
     gameExited = True
 
     if pairingWait(screen, game):
@@ -17,11 +17,11 @@ def game():
         startShooting, gameExited = placeStage(screen, game)
         if startShooting and not gameExited:
             logging.info('starting shooting stage')
-            gameWon, gameExited = shootingStage(screen, game)
+            gameExited = shootingStage(screen, game)
     
     game.quit()
     if not gameExited:
-        endingScreen(screen, gameWon)
+        endingScreen(screen, game.gameStage == STAGES.WON)
     pygame.quit()
 def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
     clockObj = pygame.time.Clock()
@@ -32,13 +32,13 @@ def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
     pygame.display.update()
 
     gameRunning = True
-    while gameRunning and not game.opponentFound():
+    while gameRunning and game.gameStage != STAGES.PLACING:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
         game.tryRequests()
         clockObj.tick(Constants.FPS)
-    return game.opponentFound()
+    return game.gameStage == STAGES.PLACING
 def placeStage(screen: pygame.Surface, game: Game.Game):
     if '--autoplace' in sys.argv:
         game.autoplace()
@@ -47,12 +47,11 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
     clockObj = pygame.time.Clock()
 
     exited = False
-    gameRunning = True
-    while gameRunning:
+    while game.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]:
         # controls ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                gameRunning = False
+                game.newGameStage(STAGES.CLOSING)
                 exited = True
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
@@ -73,20 +72,14 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
 
         # connection ---------------------------
         game.tryRequests()
-        if not game.stayConnected():
-            gameRunning = False
-            game.readyForGame = False
-        if game.readyForGame and not exited:
-            gameRunning = not game.shootingStarted()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
         game.drawGame(screen, font)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return game.readyForGame, exited
+    return game.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT], exited
 def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
     clockObj = pygame.time.Clock()
-    gameWon = True
     exited = False
     gameRunning = True
     while gameRunning:
@@ -94,31 +87,27 @@ def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 gameRunning = False
+                game.newGameStage(STAGES.CLOSING)
                 exited = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if game.shoot(event.pos):
-                        gameWon = True
                         gameRunning = False
 
         # connection ---------------------------
         game.tryRequests()
-        if not game.stayConnected():
+        if game.gameStage in [STAGES.WON, STAGES.LOST]:
             gameRunning = False
-        if not game.onTurn:
-            if game.opponentShot():
-                gameWon = False
-                gameRunning = False
         
         # drawing -----------------------------
         screen.fill((255, 255, 255))
-        if game.onTurn:
+        if game.gameStage == STAGES.SHOOTING:
             game.drawOnTurn(screen)
         else:
             game.drawOutTurn(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return gameWon, exited
+    return exited
 
 def endingScreen(screen: pygame.Surface, gameWon: bool):
     clockObj = pygame.time.Clock()

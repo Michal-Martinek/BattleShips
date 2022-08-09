@@ -1,10 +1,15 @@
 from enum import Enum, IntEnum, auto
 
 class STAGES(IntEnum):
+    CONNECTING = auto()
     PAIRING = auto()
     PLACING = auto()
+    GAME_WAIT = auto()
     SHOOTING = auto()
-    END = auto()
+    GETTING_SHOT = auto()
+    WON = auto()
+    LOST = auto()
+    CLOSING = auto()
 
 class SHOTS(IntEnum):
     NOT_SHOTTED = auto()

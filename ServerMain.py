@@ -64,7 +64,7 @@ class Game:
         '''@return (bool - opponent shotted already, list[int] - where opponent shotted, bool - if you lost'''
         shotted = self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
         pos = self.shottedPos
-        lost = self.gameStage == STAGES.END
+        lost = self.gameStage == STAGES.WON
         if shotted:
             self.swapTurn()
         if lost:
@@ -88,7 +88,7 @@ class Game:
                 return True, wholeShip, gameWon
         return False, None, False
     def gameWon(self):
-        self.gameStage = STAGES.END
+        self.gameStage = STAGES.WON
 
 
 class Server:

@@ -1,23 +1,88 @@
 import pygame, logging
 from . import Constants
 from .Session import Session
-from Shared.Enums import SHOTS, STAGES
+from Shared.Enums import SHOTS, STAGES, COM
 
 class Game:
     def __init__(self):
         self.session = Session()
-        logging.info(f'connected to the server, id={self.session.id}')
         self.grid = Grid()
-        self.gameStage: STAGES = STAGES.PAIRING
-        self.readyForGame: bool = False
-        self.onTurn: bool = False
-        self.gameWon = False
+        self.gameStage: STAGES = STAGES.CONNECTING
     def newGameStage(self, stage: STAGES):
         self.session.resetAllTimers()
         self.gameStage = stage
-    def sendReadyForGame(self) -> bool:
-        state =  {'ready': not self.readyForGame, 'ships': self.grid.shipsDicts()}
-        return self.session.sendReadyForGame(state)
+
+    # requests -------------------------------------------------
+    def connect(self):
+        assert self.gameStage == STAGES.CONNECTING
+        self.session.sendNonblockingReq(COM.CONNECT, {}, self.connectCallback)
+    def connectCallback(self, res):
+        self.session.id = res['id']
+        self.newGameStage(STAGES.PAIRING)
+    def pair(self):
+        assert self.gameStage == STAGES.PAIRING
+        self.session.sendNonblockingReq(COM.PAIR, {}, self.pairCallback)
+    def pairCallback(self, res):
+        if res['paired']:
+            self.newGameStage(STAGES.PLACING)
+
+    def gameReadiness(self):
+        assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
+        state =  {'ships': self.grid.shipsDicts(), 'ready': self.gameStage != STAGES.GAME_WAIT}
+        wasPlacing = self.gameStage == STAGES.PLACING
+        lamda = lambda res: self.gameReadinessCallback(wasPlacing, res)
+        if self.gameStage == STAGES.PLACING:
+            self.newGameStage(STAGES.GAME_WAIT)
+        self.session.sendNonblockingReq(COM.GAME_READINESS, state, lamda, block=True)
+    def gameReadinessCallback(self, wasPlacing, res):
+        assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
+        if not wasPlacing and res['approved']:
+            self.newGameStage(STAGES.PLACING)
+    
+    def gameWait(self):
+        self.session.sendBlockingReq(COM.GAME_WAIT, {}, self.gameWaitCallback)
+    def gameWaitCallback(self, res):
+        if res['started']:
+            onTurn = res['on_turn'] == self.session.id
+            self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
+    def shootReq(self, gridPos):
+        assert self.gameStage == STAGES.SHOOTING
+        callback = lambda res: self.shootCallback(gridPos, res)
+        self.session.sendNonblockingReq(COM.SHOOT, {'pos': gridPos}, callback)
+    def shootCallback(self, gridPos, res):
+        hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
+        self.grid.updateHitted(gridPos, hitted, wholeShip)
+        self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
+    def getShot(self):
+        self.session.sendBlockingReq(COM.OPPONENT_SHOT, {}, self.getShotCallback)
+    def getShotCallback(self, res):
+        if res['shotted']:
+            self.grid.opponentShot(res['pos'])
+            self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
+    def ensureConnection(self): # TODO: spawn connection check only after some time
+        self.session.sendBlockingReq(COM.CONNECTION_CHECK, {}, self.ensureConnectionCallback)
+    def ensureConnectionCallback(self, res):
+        if not res['stay_connected']:
+            self.newGameStage(STAGES.WON)
+
+    def tryRequests(self):
+        # TODO: spawn ask requests only sometimes
+        self.session.loadResponses()
+        if self.gameStage == STAGES.CONNECTING:
+            self.connect()
+            self.newGameStage(STAGES.PAIRING)
+        elif self.gameStage == STAGES.PAIRING:
+            self.pair()
+        elif self.gameStage == STAGES.GAME_WAIT:
+            self.gameWait()
+        elif self.gameStage == STAGES.GETTING_SHOT:
+            self.getShot()
+        self.ensureConnection()
+
+    @ property
+    def readyForGame(self): # NOTE: when we collapse game loops this becomes obsolete
+        return self.gameStage == STAGES.GAME_WAIT
+    # controls and API -------------------------------------------------
     def rotateShip(self):
         self.grid.rotateShip()
     def changeCursor(self):
@@ -41,74 +106,22 @@ class Game:
         self.grid.drawShotted(window)
     def drawOutTurn(self, window):
         self.grid.drawGrid(window)
+    def shoot(self, mousePos):
+        if self.gameStage == STAGES.SHOOTING:
+            gridPos = self.grid.shoot(mousePos)
+            if gridPos:
+                self.shootReq(gridPos)
 
     def autoplace(self):
         assert not self.readyForGame
         self.grid.autoplace()
         self.toggleGameReady()
-        assert self.readyForGame
     def quit(self):
         self.session.close()
     def toggleGameReady(self):
         if self.grid.allShipsPlaced():
-            approved = self.sendReadyForGame()
-            if approved:
-                self.readyForGame = not self.readyForGame
-                logging.debug('toggling readyForGame')
-
-    def waitForGame(self) -> bool:
-        self.session.waitForGame(self.waitForGameCallback)
-    def waitForGameCallback(self, res):
-        if res['started']:
-            self.onTurn = res['on_turn'] == self.session.id
-            self.newGameStage(STAGES.SHOOTING)
-    def shootingStarted(self):
-        return self.gameStage == STAGES.SHOOTING
-    def opponentShot(self) -> bool:
-        self.session.opponentShot(self.opponentShotCallback)
-    def opponentShotCallback(self, res):
-        if res['shotted']:
-            self.grid.opponentShot(res['pos'])
-            self.onTurn = True
-            if res['lost']:
-                self.gameWon = False
-                self.newGameStage(STAGES.END)
-    def shoot(self, mousePos) -> bool:
-        if self.onTurn:
-            gridPos = self.grid.shoot(mousePos)
-            if gridPos:
-                callback = lambda res: self.shootCallback(gridPos, res)
-                self.session.shoot(gridPos, callback)
-    def shootCallback(self, gridPos, res):
-        hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
-        self.grid.updateHitted(gridPos, hitted, wholeShip)
-        self.onTurn = False
-        if gameWon:
-            self.gameWon = True
-            self.newGameStage(STAGES.END)
-
-    def lookForOpponent(self):
-        self.session.lookForOpponent(self.lookForOpponentCallback)
-    def lookForOpponentCallback(self, res):
-        if res['paired']:
-            self.newGameStage(STAGES.PLACING)
-    def opponentFound(self):
-        return self.gameStage != STAGES.PAIRING
-    
-    def ensureConnection(self):
-        self.session.ensureConnection(self.ensureConnectionCallback)
-    def ensureConnectionCallback(self, res):
-        self.session.stayConnected = res['stay_connected']
-    def stayConnected(self):
-        return self.session.stayConnected
-        
-    def tryRequests(self):
-        self.session.loadResponses()
-        self.ensureConnection()
-        if self.gameStage == STAGES.PAIRING:
-            self.lookForOpponent()
-        elif self.gameStage == STAGES.PLACING and self.readyForGame:
-            self.waitForGame()
+            logging.debug('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
+            self.gameReadiness()
     
 class Grid:
     def __init__(self):
