@@ -111,8 +111,7 @@ class Game:
         '''handles queries from players who should be in a game
         @return True if the command was recognized'''
         if req.command == COM.CONNECTION_CHECK:
-            stay = self.gameActive
-            self._sendResponse(req, {'stay_connected': stay})
+            self._sendResponse(req)
         elif req.command == COM.DISCONNECT:
             self.playerDisconnect(player)
             self._sendResponse(req)
@@ -146,6 +145,7 @@ class Game:
         return True
     
     def _sendResponse(self, req: Request, payload: dict={}):
+        payload.update({'stay_connected': self.gameActive})
         ConnectionPrimitives.send(req.conn, req.playerId, req.command, payload)
 
 
@@ -167,7 +167,7 @@ class Server:
         logging.warning('unknown player, ignoring')
         self.sendErrorResponse(req, 'unknown_id')
     def sendErrorResponse(self, req, errorType):
-        self._sendResponse(req, {'error_type': errorType}, command=COM.ERROR)
+        self._sendResponse(req, {'error_type': errorType}, command=COM.ERROR, stayConnected=False)
     # -----------------------------------
 
     def unknownIdReq(self, req: Request):
@@ -217,11 +217,11 @@ class Server:
         for player, req in self.outGameReqs:
             if req.command == COM.DISCONNECT:
                 self.disconnectPlayer(player)
-                self._sendResponse(req)
+                self._sendResponse(req, stayConnected=False)
             elif req.command == COM.PAIR:
                 self.pairPlayer(player, req)
             elif req.command == COM.CONNECTION_CHECK:
-                self._sendResponse(req, {'stay_connected': True}) # TODO: merge connection check with other requests how we wanted to do that a long time :)
+                self._sendResponse(req)
             else:
                 assert False, 'unknown command, probably'
         self.outGameReqs.clear()
@@ -281,9 +281,10 @@ class Server:
         id, command, payload = ConnectionPrimitives.recv(conn)
         req = Request(conn, id, command, payload)
         return req
-    def _sendResponse(self, req: Request, payload: dict={}, command=None):
+    def _sendResponse(self, req: Request, payload: dict={}, command=None, stayConnected=True):
         if command is None:
             command = req.command
+        payload.update({'stay_connected': stayConnected})
         ConnectionPrimitives.send(req.conn, req.playerId, command, payload)
 
 
