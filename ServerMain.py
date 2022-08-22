@@ -1,4 +1,4 @@
-import socket, random, time, logging
+import socket, random, time, logging, threading, queue
 from dataclasses import dataclass
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
@@ -27,7 +27,7 @@ class Request:
     payload: dict
 
 class Game:
-    def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer):
+    def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer, closeEvent: threading.Event):
         self.id: int = id
         self.gameActive: bool = True
         self.gameStage: int = STAGES.PAIRING
@@ -36,7 +36,8 @@ class Game:
         self.playerOnTurn: int = 0
         self.shottedPos = [-1, -1]
 
-        self.pendingRequests: list[Request] = []
+        self.pendingRequests: queue.Queue[Request] = queue.Queue()
+        self.closeEvent = closeEvent
     def setPlayersForGame(self):
         for p in self.players.values():
             p.inGame = True
@@ -99,13 +100,17 @@ class Game:
         self.gameStage = STAGES.WON
 
     def putReq(self, req: Request):
-        self.pendingRequests.append(req)
+        self.pendingRequests.put(req)
     
     def handleRequests(self):
-        for req in self.pendingRequests:
+        while not self.closeEvent.is_set() and not self.canBeEnded():
+            try:
+                req = self.pendingRequests.get(timeout=1.)
+            except queue.Empty:
+                continue
+
             player = self.players[req.playerId]
             self.handleRequest(player, req)
-        self.pendingRequests.clear()
     
     def handleRequest(self, player: ConnectedPlayer, req: Request):
         '''handles queries from players who should be in a game
@@ -160,7 +165,13 @@ class Server:
         self.players: dict[int, ConnectedPlayer] = dict()
         self.games: dict[int, Game] = dict()
 
-        self.outGameReqs: list[tuple[ConnectedPlayer, Request]] = []
+        self.outGameReqs: queue.Queue[Request] = queue.Queue()
+
+        self.gameThreads: dict[int, threading.Thread] = {}
+        self.closeEvent = threading.Event()
+
+    def close(self):
+        self.closeEvent.set()
 
     # errors ---------------------------- # TODO: spawn errors
     def unknownPlayerError(self, req):
@@ -173,58 +184,72 @@ class Server:
     def unknownIdReq(self, req: Request):
         if req.command == COM.CONNECT:
             player = self.newConnectedPlayer()
-            assert player.id not in self.players
             self.players[player.id] = player
             logging.info(f'connecting new player from {req.conn.getpeername()}')
+            req.playerId = player.id
             self._sendResponse(req, {'id': player.id})
         else:
             self.unknownPlayerError(req)        
 
     def handleRequest(self, req: Request):
         if req.playerId not in self.players:
-            self.unknownIdReq(req)
+            self.outGameReqs.put(req)
+            return 
+        
+        player = self.players[req.playerId]
+        player.lastReqTime = time.time()
+        
+        if not player.inGame:
+            self.outGameReqs.put(req)
         else:
-            player = self.players[req.playerId]
-            player.lastReqTime = time.time()
-            
-            if not player.inGame:
-                self.outGameReqs.append((player, req))
-            else:
-                assert player.gameId in self.games
-                game = self.games[player.gameId]
-                game.putReq(req)
+            assert player.gameId in self.games
+            game = self.games[player.gameId]
+            game.putReq(req)
     
-    def loop(self):
-        while True:
+    def acceptLoop(self):
+        while not self.closeEvent.is_set():
             try:
                 conn, addr = self.serverSocket.accept()
-                req = self._recvReq(conn)
+                req = self._recvReq(conn) # TODO: this could hang so maybe handle asyncly?
                 self.handleRequest(req)           
             except socket.timeout:
                 pass
             finally:
-                self.handleGames()
-                self.handleOutGameReqs()
+                self.checkGames()
                 self.checkConnections()
+        self.joinGames()
+    def joinGames(self):
+        for t in self.gameThreads.values():
+            t.join()
     
-    def handleGames(self):
+    def checkGames(self):
         for game in list(self.games.values()):
-            game.handleRequests()
             if game.canBeEnded():
+                self.gameThreads[game.id].join()
                 self.endGame(game)
+            elif not self.gameThreads[game.id].is_alive():
+                self.close()
 
-    def handleOutGameReqs(self):
-        for player, req in self.outGameReqs:
-            if req.command == COM.DISCONNECT:
-                self.disconnectPlayer(player)
-                self._sendResponse(req, stayConnected=False)
-            elif req.command == COM.PAIR:
-                self.pairPlayer(player, req)
-            elif req.command == COM.CONNECTION_CHECK:
-                self._sendResponse(req)
+    def outGameReqsHandler(self):
+        while not self.closeEvent.is_set():
+            try:
+                req  = self.outGameReqs.get(timeout=1.)
+            except queue.Empty:
+                continue
+
+            if req.playerId in self.players:
+                player = self.players[req.playerId]
+                if req.command == COM.DISCONNECT:
+                    self.disconnectPlayer(player)
+                    self._sendResponse(req, stayConnected=False)
+                elif req.command == COM.PAIR:
+                    self.pairPlayer(player, req)
+                elif req.command == COM.CONNECTION_CHECK:
+                    self._sendResponse(req)
+                else:
+                    assert False, 'unknown command, probably'
             else:
-                assert False, 'unknown command, probably'
-        self.outGameReqs.clear()
+                self.unknownIdReq(req)
     
 
     def checkConnections(self):
@@ -244,8 +269,10 @@ class Server:
         assert player.id in self.players and not player.connected
         self.players.pop(player.id)
     def removeGame(self, game: Game):
-        assert game.id in self.games and game.canBeEnded()
+        assert game.id in self.games and game.canBeEnded() and game.id in self.gameThreads
+        assert not self.gameThreads[game.id].is_alive()
         self.games.pop(game.id)
+        self.gameThreads.pop(game.id)
     def endGame(self, game: Game):
         logging.info(f'ending game id {game.id}')
         for p in game.players.values():
@@ -266,15 +293,19 @@ class Server:
         return ConnectedPlayer(id)
     def addNewGame(self, player1, player2):
         id = self._generateNewID(self.games)
-        game = Game(id, player1, player2)
-        assert id not in self.games
-        self.games[game.id] = game
-        return game
+        
+        game = Game(id, player1, player2, self.closeEvent)
+        self.games[id] = game
+        
+        gameThread = threading.Thread(target=game.handleRequests, name=f'Thread-Game-{id}')
+        gameThread.start()
+        self.gameThreads[id] = gameThread
     def _generateNewID(self, dictOfIds):
         bounds = (1000, 2**20)
         id = random.randint(*bounds)
         while id in dictOfIds:
             id = random.randint(*bounds)
+        assert id not in dictOfIds
         return id
 
     def _recvReq(self, conn: socket.socket) -> Request:
@@ -293,6 +324,22 @@ def serverMain():
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
-    server.loop()    
+    
+    acceptThread = threading.Thread(target=server.acceptLoop, name='Thread-Accept')
+    acceptThread.start()
+
+    outGameThread = threading.Thread(target=server.outGameReqsHandler, name='Thread-OutGameReqs')
+    outGameThread.start()
+
+    try:
+        while acceptThread.is_alive() and outGameThread.is_alive():
+            time.sleep(3)
+    except KeyboardInterrupt:
+        print('Keyboard-Interrupt')
+    finally:
+        server.close()
+        acceptThread.join()
+        outGameThread.join()
+
 if __name__ == '__main__':
     serverMain()
