@@ -389,10 +389,11 @@ def serverMain():
             time.sleep(3)
     except KeyboardInterrupt:
         print('Keyboard-Interrupt')
-    finally:
-        server.closeEvent.set() # TODO: if one of the threads die the server will probably hang trying to close properly
+        server.closeEvent.set()
         acceptThread.join()
         waitingReqsThread.join()
+    else: # thread died
+        raise RuntimeError('Worker thread died')
 
 if __name__ == '__main__':
     serverMain()

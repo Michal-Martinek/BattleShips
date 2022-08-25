@@ -30,9 +30,9 @@ class Session:
         self.responseQueue: Queue[tuple[dict, typing.Callable, COM]] = Queue()
         self.quitNowEvent = threading.Event()
 
-        self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send')
+        self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
         self.sendThread.start()
-        self.recvThread = threading.Thread(target=self.recvLoop, name='Thread-Recv')
+        self.recvThread = threading.Thread(target=self.recvLoop, name='Thread-Recv', daemon=True)
         self.recvThread.start()
     
     def setAlreadySent(self, comm: COM):
@@ -112,7 +112,7 @@ class Session:
         '''waits for reqs from main_thread, sends them and then:
         - _fetchResponse for the nonblocking
         - move to Thread-Recv for the blocking'''
-        while not self.quitNowEvent.is_set(): # TODO: better handling of the main thread's death
+        while not self.quitNowEvent.is_set():
             try:
                 command, payload, callback, blocking = self.reqQueue.get(timeout=1.)
                 conn = self._sendReq(command, payload)
