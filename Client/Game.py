@@ -67,8 +67,7 @@ class Game:
             self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
         elif self.gameStage == STAGES.GETTING_SHOT:
             self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True) # TODO: sort out these names - geting / getting, shot / shoted / shotted and rename COM to GETTING_SHOT
-        else:
-            self.session.spawnConnectionCheck()
+        self.session.spawnConnectionCheck()
 
     @ property
     def readyForGame(self): # NOTE: when we collapse game loops this becomes obsolete

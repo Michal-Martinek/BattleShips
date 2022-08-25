@@ -38,9 +38,6 @@ class BlockingRequest:
     def command(self):
         return self.req.command
     @ property
-    def playerId(self):
-        return self.req.playerId
-    @ property
     def stayConnected(self):
         return self.req.stayConnected
     @ stayConnected.setter
@@ -185,7 +182,7 @@ class Server:
                 self.endGame(game)
 
     def waitingReqsHandler(self):
-        while not self.closeEvent.is_set() or self.players or self.blockingReqs: # TODO: add blocking connection check for instant server to client coommunication
+        while not self.closeEvent.is_set() or self.players or self.blockingReqs:
             try:
                 req  = self.waitingReqs.get(timeout=1.)
             except queue.Empty:
@@ -210,11 +207,7 @@ class Server:
         elif req.command == COM.PAIR:
             self.pairPlayer(player, req)
         elif req.command == COM.CONNECTION_CHECK:
-            if player.inGame:
-                game = self.games[player.gameId]
-                if not game.gameActive:
-                    req.stayConnected = False
-            self._sendResponse(req)
+            self.addBlockingReq(player, req, {})
         else:
             assert player.gameId in self.games
             game = self.games[player.gameId]
@@ -343,6 +336,11 @@ class Server:
         for req in list(self.blockingReqs.values()):
             if time.time() - req.timeRecvd > MAX_TIME_FOR_BLOCKING or self.closeEvent.is_set():
                 self.respondBlockingReq(req.player, useDefault=True)
+            elif req.player.inGame:
+                game = self.games[req.player.gameId]
+                if not game.gameActive:
+                    req.stayConnected = False
+                    self.respondBlockingReq(req.player, useDefault=True)
 
     def newConnectedPlayer(self):
         id = self._generateNewID(self.players)

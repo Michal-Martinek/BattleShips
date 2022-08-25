@@ -75,8 +75,8 @@ class Session:
         self.reqQueue.put((command, payload, callback, blocking))
     # checks and closing -----------------------
     def spawnConnectionCheck(self):
-        if time.time() - self.lastReqTime > MAX_TIME_BETWEEN_CONNECTION_CHECKS:
-            self.tryToSend(COM.CONNECTION_CHECK, {}, lambda res: None, blocking=False)
+        if self.noPendingReqs() and self.connected:
+            self.tryToSend(COM.CONNECTION_CHECK, {}, lambda res: None, blocking=True)
     def disconnect(self):
         assert self.connected
         self.tryToSend(COM.DISCONNECT, {}, lambda res: None, blocking=False, mustSend=True)
