@@ -85,6 +85,7 @@ class Grid:
         self.placedShips: list[Ship] = []
         self.shottedMap =  [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
         self.wholeHittedShips: list[Ship] = []
+        self.mineNotHitted = [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
@@ -179,6 +180,7 @@ class Grid:
         for ship in self.placedShips:
             if ship.shot(pos):
                 return True
+        self.mineNotHitted[pos[1]][pos[0]] = SHOTS.NOT_HITTED
         return False
     def shoot(self, mousePos):
         clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
@@ -206,6 +208,11 @@ class Grid:
         self.drawGridlines(window)
         for ship in self.placedShips:
             ship.draw(window)
+        for y, row in enumerate(self.mineNotHitted):
+            for x, col in enumerate(row):
+                if col == SHOTS.NOT_HITTED:
+                    pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+                    pygame.draw.circle(window, (0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
         if self.flyingShip.size:
             self.flyingShip.draw(window)
     def drawShotted(self, window):
