@@ -134,7 +134,7 @@ class Session:
             except Empty:
                 pass
     def recvLoop(self):
-        pendingReqs = []
+        pendingReqs: list[Request] = []
         while not self.quitNowEvent.is_set():
             try:
                 req = self.requestsToRecv.get(timeout=0.1)
@@ -142,15 +142,15 @@ class Session:
             except Empty:
                 pass
             self.tryReceiving(pendingReqs)
-    def tryReceiving(self, pendingReqs):
+    def tryReceiving(self, pendingReqs: list[Request]):
         '''loops through pendingReqs and tries to fetch them'''
-        doneReqIndxs = []
-        for i, (conn, command, callback) in enumerate(pendingReqs):
-            if self._canSocketRecv(conn):
-                self._fetchResponse(conn, command, callback)
-                doneReqIndxs.append(i)
-        for i in doneReqIndxs:
-            pendingReqs.pop(i)
+        doneReqs = []
+        for req in pendingReqs:
+            if self._canSocketRecv(req.conn):
+                self._fetchResponse(req)
+                doneReqs.append(req)
+        for r in doneReqs:
+            pendingReqs.remove(r)
     def _fetchResponse(self, req: Request):
         self._recvReq(req)
         self.responseQueue.put(req)
