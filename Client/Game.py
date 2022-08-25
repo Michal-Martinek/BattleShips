@@ -1,20 +1,79 @@
 import pygame, logging
 from . import Constants
 from .Session import Session
-from Shared.Enums import SHOTS, STAGES
+from Shared.Enums import SHOTS, STAGES, COM
 
 class Game:
     def __init__(self):
         self.session = Session()
-        logging.info(f'connected to the server, id={self.session.id}')
         self.grid = Grid()
-        self.readyForGame: bool = False
-        self.onTurn: bool = False
-    def newGameStage(self):
-        self.session.resetAllTimers()
-    def sendReadyForGame(self) -> bool:
-        state =  {'ready': not self.readyForGame, 'ships': self.grid.shipsDicts()}
-        return self.session.sendReadyForGame(state)
+        self.gameStage: STAGES = STAGES.CONNECTING
+    def newGameStage(self, stage: STAGES):
+        assert stage != self.gameStage
+        self.gameStage = stage
+        if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
+            self.session.disconnect()
+
+    # requests -------------------------------------------------
+    def connectCallback(self, res):
+        self.session.id = res['id']
+        self.session.connected = True
+        self.newGameStage(STAGES.PAIRING)
+    def pairCallback(self, res):
+        if res['paired']:
+            self.newGameStage(STAGES.PLACING)
+
+    def gameReadiness(self):
+        assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
+        if self.session.alreadySent[COM.GAME_READINESS]: return
+        state =  {'ships': self.grid.shipsDicts(), 'ready': self.gameStage != STAGES.GAME_WAIT}
+        wasPlacing = self.gameStage == STAGES.PLACING
+        lamda = lambda res: self.gameReadinessCallback(wasPlacing, res)
+        if self.gameStage == STAGES.PLACING:
+            self.newGameStage(STAGES.GAME_WAIT)
+        self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True)
+    def gameReadinessCallback(self, wasPlacing, res):
+        assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
+        if not wasPlacing and res['approved']:
+            self.newGameStage(STAGES.PLACING)
+    def gameWaitCallback(self, res):
+        if res['started']:
+            onTurn = res['on_turn'] == self.session.id
+            self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
+    def shootReq(self, gridPos):
+        assert self.gameStage == STAGES.SHOOTING
+        callback = lambda res: self.shootCallback(gridPos, res)
+        self.session.tryToSend(COM.SHOOT, {'pos': gridPos}, callback, blocking=False, mustSend=True)
+    def shootCallback(self, gridPos, res):
+        hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
+        self.grid.updateHitted(gridPos, hitted, wholeShip)
+        self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
+    def gettingShotCallback(self, res):
+        if res['shotted']:
+            self.grid.opponentShot(res['pos'])
+            self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
+    
+    def tryRequests(self):
+        stayConnected = self.session.loadResponses()
+        if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING]:
+            self.session.quit(must=(self.gameStage == STAGES.CLOSING))
+        elif not stayConnected:
+            self.newGameStage(STAGES.WON)
+            self.session.quit(must=False)
+        elif self.gameStage == STAGES.CONNECTING:
+            self.session.tryToSend(COM.CONNECT, {}, self.connectCallback, blocking=False)
+        elif self.gameStage == STAGES.PAIRING:
+            self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)
+        elif self.gameStage == STAGES.GAME_WAIT:
+            self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
+        elif self.gameStage == STAGES.GETTING_SHOT:
+            self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True)
+        self.session.spawnConnectionCheck()
+
+    @ property
+    def readyForGame(self): # NOTE: when we collapse game loops this becomes obsolete
+        return self.gameStage == STAGES.GAME_WAIT
+    # controls and API -------------------------------------------------
     def rotateShip(self):
         self.grid.rotateShip()
     def changeCursor(self):
@@ -38,46 +97,21 @@ class Game:
         self.grid.drawShotted(window)
     def drawOutTurn(self, window):
         self.grid.drawGrid(window)
+    def shoot(self, mousePos):
+        if self.gameStage == STAGES.SHOOTING:
+            gridPos = self.grid.shoot(mousePos)
+            if gridPos:
+                self.shootReq(gridPos)
 
     def autoplace(self):
         assert not self.readyForGame
         self.grid.autoplace()
         self.toggleGameReady()
-        assert self.readyForGame
-    def quit(self):
-        self.session.close()
     def toggleGameReady(self):
         if self.grid.allShipsPlaced():
-            approved = self.sendReadyForGame()
-            if approved:
-                self.newGameStage()
-                self.readyForGame = not self.readyForGame
-                logging.debug('toggling readyForGame')
-    def waitForGame(self) -> bool:
-        started, onTurn = self.session.waitForGame()
-        if started:
-            self.onTurn = onTurn
-        return not started
-    def opponentShot(self) -> bool:
-        pos, lost = self.session.opponentShot()
-        if pos is not None:
-            self.grid.opponentShot(pos)
-            self.onTurn = True
-        return lost
-    def shoot(self, mousePos) -> bool:
-        if self.onTurn:
-            gridPos = self.grid.shoot(mousePos)
-            if gridPos:
-                hitted, wholeShip, gameWon = self.session.shoot(gridPos)
-                self.grid.updateHitted(gridPos, hitted, wholeShip)
-                self.onTurn = False
-                return gameWon
-        return False
-    def lookForOpponent(self):
-        return self.session.lookForOpponent()
-    def ensureConnection(self):
-        return self.session.ensureConnection()
-
+            logging.debug('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
+            self.gameReadiness()
+    
 class Grid:
     def __init__(self):
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
