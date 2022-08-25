@@ -6,99 +6,164 @@ import threading
 import logging
 import enum, typing
 
-class Session:
-    SERVER_ADDRES = ('192.168.0.159', 1250)
-    TIME_BETWEEN_REQUESTS = 1.0
-    
+# helpers
+def iterQueue(q: Queue):
+        try:
+            while 1:
+                yield q.get_nowait()
+        except Empty:
+            return
+
+SERVER_ADDRES = ('192.168.0.159', 1250)
+MAX_TIME_BETWEEN_CONNECTION_CHECKS = 23.0
+
+class Session:    
     def __init__(self):
-        self.connected = False
         self.id: int = 0
-        self.timers: dict[str, float] = {}
-        self.resetAllTimers()
+        self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
+        self.lastReqTime = 0.0
+        self.connected = False
+        self.properlyClosed = False
 
-        self.blockReqs = False
+        self.reqQueue: Queue[tuple[COM, dict, typing.Callable, bool]] = Queue() # TODO: make a dataclass for requests
+        self.requestsToRecv: Queue[tuple[socket.socket, COM, typing.Callable]] = Queue()
+        self.responseQueue: Queue[tuple[dict, typing.Callable, COM]] = Queue()
+        self.quitNowEvent = threading.Event()
 
-        self.reqQueue: Queue[tuple[str, dict, typing.Callable, bool]] = Queue()
-        self.responseList: list[tuple[dict, typing.Callable, bool]] = []
-        self.responseLock = threading.Lock()
-        self.endEvent = threading.Event()
-        self.reqThread = threading.Thread(target=self.reqLoop)
-        self.reqThread.start()
-        
-    def setTimer(self, timer: str):
-        self.timers[timer] = time.time()
-    def resetAllTimers(self):
-        self.timers = {COM.CONNECTION_CHECK: 0.0, COM.PAIR: 0.0, COM.GAME_WAIT: 0.0, COM.OPPONENT_SHOT: 0.0}
-    def shouldSend(self, timer: str):
-        return self.timers[timer] < time.time()-self.TIME_BETWEEN_REQUESTS
-
-    def sendBlockingReq(self, command: COM, payload: dict, callback: typing.Callable, *, block=False) -> bool:
-        if self.shouldSend(command):
-            put = self.putReq(command, payload, callback, block=block)
-            if put:
-                self.setTimer(command)
-                return True
-        return False
+        self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send')
+        self.sendThread.start()
+        self.recvThread = threading.Thread(target=self.recvLoop, name='Thread-Recv')
+        self.recvThread.start()
     
-    def sendNonblockingReq(self, command: COM, payload: dict, callback: typing.Callable, *, block=True):
-        put = self.putReq(command, payload, callback, block=block, mustBePut=True)
-        self.resetAllTimers()
-        assert put, 'non blocking requests should always be putted'
+    def setAlreadySent(self, comm: COM):
+        assert not self.alreadySent[comm]
+        self.alreadySent[comm] = True
+    def resetAlreadySent(self, comm: COM):
+        assert self.alreadySent[comm]
+        self.alreadySent[comm] = False
+    def noPendingReqs(self):
+        return not any(self.alreadySent.values())
+    
+    # api --------------------------------------    
+    def tryToSend(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool, mustSend=False) -> bool:
+        '''sends the req if it wasn't already sent
+        on unsuccesfull send if 'mustSend' it raises RuntimeError, the 'mustSend' best works for requests which post data to the server'''
+        if sent := not self.alreadySent[command]:
+            self._putReq(command, payload, callback, blocking=blocking)
+            self.setAlreadySent(command)
+        elif mustSend:
+            raise RuntimeError("Request specified with 'mustSent' could not be sent due to request being already sent")
+        return sent
 
-    # TODO: these are not async
-    def close(self):
-        logging.debug('joining the requests Thread and disconnecting from the server')
-        self.endEvent.set()
-        self.reqThread.join()
-        self._makeReq(COM.DISCONNECT)
-
-    # multithreaded ------------------------------------
-    def loadResponses(self):
-        self.responseLock.acquire()
-        ress = self.responseList
-        self.responseList = []
-        self.responseLock.release()
-
-        for res, callback, block in ress:
-            callback(res)
-            if block:
-                self.blockReqs = False
-
-    def reqLoop(self):
-        # TODO: handle requests asyncly
-        while not self.endEvent.is_set() and threading.main_thread().is_alive():
+    def loadResponses(self, *, _drain=False) -> bool:
+        '''gets all available responses and calls callbacks
+        the parameter '_drain' should only be used internally'''
+        if self.quitNowEvent.is_set(): return False
+        self.checkThreads()
+        stayConnected = True
+        for res, callback, command in iterQueue(self.responseQueue):
+            stayConnected = stayConnected and res['stay_connected']
+            if not _drain: callback(res)
+            self.resetAlreadySent(command)
+            self.reqQueue.task_done()
+        return stayConnected
+    def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
+        assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'
+        assert self.connected or command == COM.CONNECT, 'the session is not conected'
+        assert self.id != 0 or command == COM.CONNECT, 'self.id is invalid for sending this request'
+        self.lastReqTime = time.time()
+        self.reqQueue.put((command, payload, callback, blocking))
+    # checks and closing -----------------------
+    def spawnConnectionCheck(self):
+        if time.time() - self.lastReqTime > MAX_TIME_BETWEEN_CONNECTION_CHECKS:
+            self.tryToSend(COM.CONNECTION_CHECK, {}, lambda res: None, blocking=False)
+    def disconnect(self):
+        assert self.connected
+        self.tryToSend(COM.DISCONNECT, {}, lambda res: None, blocking=False, mustSend=True)
+        self.connected = False
+    def _awaitNoPendingReqs(self):
+        '''drains all responses untill there are no pending requests'''
+        while not self.noPendingReqs():
+            self.loadResponses(_drain=True)
+    def quit(self, must=False):
+        '''tries to close session, if 'must' it blocks untill closed
+          if it gets to actually closing, the disconnect must have been sent in advance'''
+        if not self.properlyClosed:
+            if self.noPendingReqs() or must:
+                self._awaitNoPendingReqs()
+                assert not self.connected, 'the session is still connected'
+                self.quitNowEvent.set()
+                self.properlyClosed = self.joinThreads(must=must)
+                if must: assert self.properlyClosed
+    def joinThreads(self, must) -> bool:
+        tmout = None if must else 0.0
+        self.sendThread.join(timeout=tmout)
+        if self.sendThread.is_alive(): return False
+        self.recvThread.join(timeout=tmout)
+        if self.recvThread.is_alive(): return False
+        return True
+    def checkThreads(self):
+        if not self.sendThread.is_alive():
+            raise RuntimeError('Thread-Send ended')
+        if not self.recvThread.is_alive():
+            raise RuntimeError('Thread-Recv ended')
+    # request handling running in threads -------------------------------------
+    def sendLoop(self):
+        '''waits for reqs from main_thread, sends them and then:
+        - _fetchResponse for the nonblocking
+        - move to Thread-Recv for the blocking'''
+        while not self.quitNowEvent.is_set(): # TODO: better handling of the main thread's death
             try:
-                command, payload, callback, block = self.reqQueue.get(timeout=0.2)
-                res = self._makeReq(command, payload)
-                self.responseLock.acquire()
-                self.responseList.append((res, callback, block))
-                self.responseLock.release()
-                self.reqQueue.task_done()
+                command, payload, callback, blocking = self.reqQueue.get(timeout=1.)
+                conn = self._sendReq(command, payload)
+                if blocking:
+                    self.requestsToRecv.put((conn, command, callback))
+                else:
+                    self._fetchResponse(conn, command, callback)
             except Empty:
                 pass
-    
-    def putReq(self, command, payload, callback, *, block=False, mustBePut=False) -> bool:
-        '''@return - True if the request was properly put to the request queue'''
-        assert isinstance(command, enum.Enum) and isinstance(payload, dict) and callable(callback), 'the request is not as expected'
-        if not self.blockReqs or mustBePut:
-            if block:
-                self.blockReqs = True # TODO: the request blocking is weird
-                self.reqQueue.join()
-            self.reqQueue.put((command, payload, callback, block))
-            return True
-        return False
+    def recvLoop(self):
+        pendingReqs = []
+        while not self.quitNowEvent.is_set():
+            try:
+                req = self.requestsToRecv.get(timeout=0.1)
+                pendingReqs.append(req)
+            except Empty:
+                pass
+            self.tryReceiving(pendingReqs)
+    def tryReceiving(self, pendingReqs):
+        '''loops through pendingReqs and tries to fetch them'''
+        doneReqIndxs = []
+        for i, (conn, command, callback) in enumerate(pendingReqs):
+            if self._canSocketRecv(conn):
+                self._fetchResponse(conn, command, callback)
+                doneReqIndxs.append(i)
+        for i in doneReqIndxs:
+            pendingReqs.pop(i)
+    def _fetchResponse(self, conn: socket.socket, command, callback):
+        conn.setblocking(True)
+        res = self._recvReq(conn, command)
+        self.responseQueue.put((res, callback, command))
+    @ staticmethod
+    def _canSocketRecv(s: socket.socket):
+        try:
+            s.setblocking(False)
+            return s.recv(1, socket.MSG_PEEK)
+        except BlockingIOError:
+            return False
 
     # internals -------------------------------------
-    def _makeReq(self, command: COM, payload: dict=dict()) -> dict:
+    def _sendReq(self, command: COM, payload: dict=dict()) -> socket.socket:
         conn = self._newServerSocket()
         ConnectionPrimitives.send(conn, self.id, command, payload)
-
+        return conn
+    def _recvReq(self, conn: socket.socket, sentCommand: COM) -> dict:
         id, recvdCommand, payload = ConnectionPrimitives.recv(conn)
         conn.close()
-        assert recvdCommand == command, 'Response should have the same command'
-        assert self.id == id or command == COM.CONNECT, 'The received id is not my id'
+        assert recvdCommand == sentCommand, 'Response should have the same command'
+        assert self.id == id or sentCommand == COM.CONNECT, 'The received id is not my id'
         return payload
     def _newServerSocket(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(self.SERVER_ADDRES)
+        s.connect(SERVER_ADDRES)
         return s

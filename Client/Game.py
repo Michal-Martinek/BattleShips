@@ -9,19 +9,16 @@ class Game:
         self.grid = Grid()
         self.gameStage: STAGES = STAGES.CONNECTING
     def newGameStage(self, stage: STAGES):
-        self.session.resetAllTimers()
+        assert stage != self.gameStage
         self.gameStage = stage
+        if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
+            self.session.disconnect()
 
     # requests -------------------------------------------------
-    def connect(self):
-        assert self.gameStage == STAGES.CONNECTING
-        self.session.sendNonblockingReq(COM.CONNECT, {}, self.connectCallback)
     def connectCallback(self, res):
         self.session.id = res['id']
+        self.session.connected = True
         self.newGameStage(STAGES.PAIRING)
-    def pair(self):
-        assert self.gameStage == STAGES.PAIRING
-        self.session.sendNonblockingReq(COM.PAIR, {}, self.pairCallback)
     def pairCallback(self, res):
         if res['paired']:
             self.newGameStage(STAGES.PLACING)
@@ -33,14 +30,11 @@ class Game:
         lamda = lambda res: self.gameReadinessCallback(wasPlacing, res)
         if self.gameStage == STAGES.PLACING:
             self.newGameStage(STAGES.GAME_WAIT)
-        self.session.sendNonblockingReq(COM.GAME_READINESS, state, lamda, block=True)
+        self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True) # TODO: if we can't send we should reattempt when the response arrives
     def gameReadinessCallback(self, wasPlacing, res):
         assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
         if not wasPlacing and res['approved']:
             self.newGameStage(STAGES.PLACING)
-    
-    def gameWait(self):
-        self.session.sendBlockingReq(COM.GAME_WAIT, {}, self.gameWaitCallback)
     def gameWaitCallback(self, res):
         if res['started']:
             onTurn = res['on_turn'] == self.session.id
@@ -48,36 +42,33 @@ class Game:
     def shootReq(self, gridPos):
         assert self.gameStage == STAGES.SHOOTING
         callback = lambda res: self.shootCallback(gridPos, res)
-        self.session.sendNonblockingReq(COM.SHOOT, {'pos': gridPos}, callback)
+        self.session.tryToSend(COM.SHOOT, {'pos': gridPos}, callback, blocking=False, mustSend=True)
     def shootCallback(self, gridPos, res):
         hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
         self.grid.updateHitted(gridPos, hitted, wholeShip)
         self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
-    def getShot(self):
-        self.session.sendBlockingReq(COM.OPPONENT_SHOT, {}, self.getShotCallback)
-    def getShotCallback(self, res):
+    def gettingShotCallback(self, res):
         if res['shotted']:
             self.grid.opponentShot(res['pos'])
             self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
-    def ensureConnection(self): # TODO: spawn connection check only after some time
-        self.session.sendBlockingReq(COM.CONNECTION_CHECK, {}, self.ensureConnectionCallback)
-    def ensureConnectionCallback(self, res):
-        if not res['stay_connected']:
-            self.newGameStage(STAGES.WON)
-
+    
     def tryRequests(self):
-        # TODO: spawn ask requests only sometimes
-        self.session.loadResponses()
-        if self.gameStage == STAGES.CONNECTING:
-            self.connect()
-            self.newGameStage(STAGES.PAIRING)
+        stayConnected = self.session.loadResponses()
+        if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING]:
+            self.session.quit(must=(self.gameStage == STAGES.CLOSING))
+        elif not stayConnected:
+            self.newGameStage(STAGES.WON)
+            self.session.quit(must=False)
+        elif self.gameStage == STAGES.CONNECTING:
+            self.session.tryToSend(COM.CONNECT, {}, self.connectCallback, blocking=False)
         elif self.gameStage == STAGES.PAIRING:
-            self.pair()
+            self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)
         elif self.gameStage == STAGES.GAME_WAIT:
-            self.gameWait()
+            self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
         elif self.gameStage == STAGES.GETTING_SHOT:
-            self.getShot()
-        self.ensureConnection()
+            self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True) # TODO: sort out these names - geting / getting, shot / shoted / shotted and rename COM to GETTING_SHOT
+        else:
+            self.session.spawnConnectionCheck()
 
     @ property
     def readyForGame(self): # NOTE: when we collapse game loops this becomes obsolete
@@ -116,8 +107,6 @@ class Game:
         assert not self.readyForGame
         self.grid.autoplace()
         self.toggleGameReady()
-    def quit(self):
-        self.session.close()
     def toggleGameReady(self):
         if self.grid.allShipsPlaced():
             logging.debug('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
