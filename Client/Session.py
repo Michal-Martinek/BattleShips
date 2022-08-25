@@ -4,15 +4,26 @@ from Shared.Enums import COM
 from queue import Queue, Empty
 import threading
 import logging
+from dataclasses import dataclass
 import enum, typing
 
 # helpers
-def iterQueue(q: Queue):
+AnyT = typing.TypeVar('AnyT')
+def iterQueue(q: Queue[AnyT]) -> typing.Iterator[AnyT]:
         try:
             while 1:
                 yield q.get_nowait()
         except Empty:
             return
+@ dataclass
+class Request:
+    command: COM
+    payload: dict
+    callback: typing.Callable
+    blocking: bool
+    conn: socket.socket=None
+    state: int=0 # 0 - waiting, 1- sent, 2 - received
+
 
 SERVER_ADDRES = ('192.168.0.159', 1250)
 MAX_TIME_BETWEEN_CONNECTION_CHECKS = 23.0
@@ -25,9 +36,9 @@ class Session:
         self.connected = False
         self.properlyClosed = False
 
-        self.reqQueue: Queue[tuple[COM, dict, typing.Callable, bool]] = Queue() # TODO: make a dataclass for requests
-        self.requestsToRecv: Queue[tuple[socket.socket, COM, typing.Callable]] = Queue()
-        self.responseQueue: Queue[tuple[dict, typing.Callable, COM]] = Queue()
+        self.reqQueue: Queue[Request] = Queue()
+        self.requestsToRecv: Queue[Request] = Queue()
+        self.responseQueue: Queue[Request] = Queue()
         self.quitNowEvent = threading.Event()
 
         self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
@@ -61,10 +72,10 @@ class Session:
         if self.quitNowEvent.is_set(): return False
         self.checkThreads()
         stayConnected = True
-        for res, callback, command in iterQueue(self.responseQueue):
-            stayConnected = stayConnected and res['stay_connected']
-            if not _drain: callback(res)
-            self.resetAlreadySent(command)
+        for req in iterQueue(self.responseQueue):
+            stayConnected = stayConnected and req.payload['stay_connected']
+            if not _drain: req.callback(req.payload)
+            self.resetAlreadySent(req.command)
             self.reqQueue.task_done()
         return stayConnected
     def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
@@ -72,7 +83,7 @@ class Session:
         assert self.connected or command == COM.CONNECT, 'the session is not conected'
         assert self.id != 0 or command == COM.CONNECT, 'self.id is invalid for sending this request'
         self.lastReqTime = time.time()
-        self.reqQueue.put((command, payload, callback, blocking))
+        self.reqQueue.put(Request(command, payload, callback, blocking))
     # checks and closing -----------------------
     def spawnConnectionCheck(self):
         if self.noPendingReqs() and self.connected:
@@ -114,12 +125,12 @@ class Session:
         - move to Thread-Recv for the blocking'''
         while not self.quitNowEvent.is_set():
             try:
-                command, payload, callback, blocking = self.reqQueue.get(timeout=1.)
-                conn = self._sendReq(command, payload)
-                if blocking:
-                    self.requestsToRecv.put((conn, command, callback))
+                req = self.reqQueue.get(timeout=1.)
+                self._sendReq(req)
+                if req.blocking:
+                    self.requestsToRecv.put(req)
                 else:
-                    self._fetchResponse(conn, command, callback)
+                    self._fetchResponse(req)
             except Empty:
                 pass
     def recvLoop(self):
@@ -140,10 +151,9 @@ class Session:
                 doneReqIndxs.append(i)
         for i in doneReqIndxs:
             pendingReqs.pop(i)
-    def _fetchResponse(self, conn: socket.socket, command, callback):
-        conn.setblocking(True)
-        res = self._recvReq(conn, command)
-        self.responseQueue.put((res, callback, command))
+    def _fetchResponse(self, req: Request):
+        self._recvReq(req)
+        self.responseQueue.put(req)
     @ staticmethod
     def _canSocketRecv(s: socket.socket):
         try:
@@ -153,17 +163,18 @@ class Session:
             return False
 
     # internals -------------------------------------
-    def _sendReq(self, command: COM, payload: dict=dict()) -> socket.socket:
-        conn = self._newServerSocket()
-        ConnectionPrimitives.send(conn, self.id, command, payload)
-        return conn
-    def _recvReq(self, conn: socket.socket, sentCommand: COM) -> dict:
-        id, recvdCommand, payload = ConnectionPrimitives.recv(conn)
-        conn.close()
-        assert recvdCommand == sentCommand, 'Response should have the same command'
-        assert self.id == id or sentCommand == COM.CONNECT, 'The received id is not my id'
-        return payload
-    def _newServerSocket(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(SERVER_ADDRES)
-        return s
+    def _sendReq(self, req: Request) -> socket.socket:
+        assert req.state == 0
+        self._newServerSocket(req)
+        ConnectionPrimitives.send(req.conn, self.id, req.command, req.payload)
+        req.state = 1
+    def _recvReq(self, req: Request):
+        assert req.state == 1
+        id, recvdCommand, req.payload = ConnectionPrimitives.recv(req.conn)
+        req.conn.close()
+        req.state = 2
+        assert recvdCommand == req.command, 'Response should have the same command'
+        assert self.id == id or req.command == COM.CONNECT, 'The received id is not my id'
+    def _newServerSocket(self, req: Request):
+        req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        req.conn.connect(SERVER_ADDRES)
