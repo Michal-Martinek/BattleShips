@@ -3,60 +3,50 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import logging
 from Client import Game, Constants
+from Shared.Enums import STAGES
 
 def game():
     pygame.init()
     logging.basicConfig(level=logging.INFO)
     screen = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
     game = Game.Game()
-    gameWon = True
-    gameExited = True
 
-    if pairingWait(screen, game):
-        logging.info(f'paired with player id {game.session.opponentId}, starting place stage')
-        startShooting, gameExited = placeStage(screen, game)
-        if startShooting and not gameExited:
+    pairingWait(screen, game)
+    if game.gameStage == STAGES.PLACING:
+        logging.info(f'paired, starting place stage')
+        placeStage(screen, game)
+        if game.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
             logging.info('starting shooting stage')
-            gameWon, gameExited = shootingStage(screen, game)
+            shootingStage(screen, game)
     
-    game.quit()
-    if not gameExited:
-        endingScreen(screen, gameWon)
+    endingScreen(screen, game)
     pygame.quit()
 def pairingWait(screen: pygame.Surface, game: Game.Game) -> bool:
-    game.newGameStage()
     clockObj = pygame.time.Clock()
+    # drawing
     font = pygame.font.SysFont('arial', 60)
-    opponentFound = False
-    gameRunning = True
-    while gameRunning:
+    screen.fill((255, 255, 255))
+    screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
+    pygame.display.update()
+
+    while game.gameStage in [STAGES.PAIRING, STAGES.CONNECTING]:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                gameRunning = False
-        if game.lookForOpponent():
-            gameRunning = False
-            opponentFound = True
-        screen.fill((255, 255, 255))
-        screen.blit(font.render('Waiting for opponent...', True, (0,0,0)), (50, 300))
-        pygame.display.update()
+                game.newGameStage(STAGES.CLOSING)
+        game.tryRequests()
         clockObj.tick(Constants.FPS)
-    return opponentFound
 def placeStage(screen: pygame.Surface, game: Game.Game):
-    game.newGameStage()
     if '--autoplace' in sys.argv:
         game.autoplace()
     
     font = pygame.font.SysFont('arial', 40)
     clockObj = pygame.time.Clock()
 
-    exited = False
-    gameRunning = True
-    while gameRunning:
+    while game.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]:
         # controls ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                gameRunning = False
-                exited = True
+                game.newGameStage(STAGES.CLOSING)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
                     game.rotateShip()
@@ -75,69 +65,52 @@ def placeStage(screen: pygame.Surface, game: Game.Game):
                     game.changeShipSize(-1)
 
         # connection ---------------------------
-        if not game.ensureConnection():
-            gameRunning = False
-            game.readyForGame = False
-        if game.readyForGame and not exited:
-            gameRunning = game.waitForGame()
+        game.tryRequests()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
         game.drawGame(screen, font)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return game.readyForGame, exited
 def shootingStage(screen: pygame.Surface, game: Game.Game) -> tuple[bool, bool]:
-    game.newGameStage()
     clockObj = pygame.time.Clock()
-    gameWon = True
-    exited = False
-    gameRunning = True
-    while gameRunning:
+    while game.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
         # controls ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                gameRunning = False
-                exited = True
+                game.newGameStage(STAGES.CLOSING)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if game.shoot(event.pos):
-                        gameWon = True
-                        gameRunning = False
+                    game.shoot(event.pos)
 
         # connection ---------------------------
-        if not game.ensureConnection():
-            gameRunning = False
-        if not game.onTurn:
-            if game.opponentShot():
-                gameWon = False
-                gameRunning = False
-        
+        game.tryRequests()
         # drawing -----------------------------
         screen.fill((255, 255, 255))
-        if game.onTurn:
+        if game.gameStage == STAGES.SHOOTING:
             game.drawOnTurn(screen)
-        else:
+        elif game.gameStage == STAGES.GETTING_SHOT:
             game.drawOutTurn(screen)
         pygame.display.update()
         clockObj.tick(Constants.FPS)
-    return gameWon, exited
 
-def endingScreen(screen: pygame.Surface, gameWon: bool):
+def endingScreen(screen: pygame.Surface, game: Game.Game):
     clockObj = pygame.time.Clock()
     font = pygame.font.SysFont('arial', 60)
 
     # drawing the message
-    message = ['You lost!   :(', 'You won!   :)'][gameWon]
+    message = ['You lost!   :(', 'You won!   :)'][game.gameStage == STAGES.WON]
     screen.fill((255, 255, 255))
-    screen.blit(font.render(message, True, (0,0,0)), (150, 300))
+    if game.gameStage in [STAGES.WON, STAGES.LOST]:
+        screen.blit(font.render(message, True, (0,0,0)), (150, 300))
     pygame.display.update()
 
-    time = 0
-    while time <= Constants.FPS * 5:
+    pygame.time.set_timer(pygame.USEREVENT, 5000, loops=1)
+    while game.gameStage != STAGES.CLOSING or not game.session.properlyClosed:
         for event in pygame.event.get():
-            if event.type in [pygame.QUIT, pygame.KEYDOWN]:
-                return
-        time += 1
+            if event.type in [pygame.QUIT, pygame.KEYDOWN, pygame.USEREVENT]:
+                if game.gameStage != STAGES.CLOSING:
+                    game.newGameStage(STAGES.CLOSING)
+        game.tryRequests()
         clockObj.tick(Constants.FPS)
 
 

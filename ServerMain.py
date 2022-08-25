@@ -1,5 +1,6 @@
-import socket, random, time, logging
-from typing import Union
+import socket, random, time, logging, threading, queue
+from dataclasses import dataclass
+from typing import Union, Optional
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
 
@@ -7,35 +8,63 @@ class ConnectedPlayer:
     def __init__(self, id: int):
         self.connected: bool = True
         self.id: int = id
+        self.inGame = False
         self.gameId: int = 0
         self.lastReqTime = time.time()
         self.gameState: dict = {'ready': False}
-    @ property
-    def inGame(self):
-        return self.gameId != 0
     def __repr__(self):
         return f'{self.__class__.__name__}(id={self.id}, gameId={self.gameId}, gameState={self.gameState})'
     def shootingReady(self):
         return self.gameState['ready']
     def disconnect(self):
+        logging.info(f'disconnecting player {self.id}')
         self.connected = False
 
+# dataclasses
+@ dataclass
+class Request:
+    conn: socket.socket
+    playerId: int
+    command: COM
+    payload: dict
+    stayConnected: bool = True
+@ dataclass
+class BlockingRequest:
+    req: Request
+    player: ConnectedPlayer
+    timeRecvd: float
+    defaultResponse: dict
+    @ property
+    def command(self):
+        return self.req.command
+    @ property
+    def stayConnected(self):
+        return self.req.stayConnected
+    @ stayConnected.setter
+    def stayConnected(self, val):
+        self.req.stayConnected = val
+    
+
+# globals
+MAX_TIME_FOR_DISCONNECT = 30.
+MAX_TIME_FOR_BLOCKING = 20.
+
 class Game:
-    def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer):
+    def __init__(self, id, player1: ConnectedPlayer, player2: ConnectedPlayer, bothPaired: bool):
         self.id: int = id
         self.gameActive: bool = True
-        self.gameStage: int = STAGES.PLACING
+        self.gameStage: int = STAGES.PLACING if bothPaired else STAGES.PAIRING
         self.players: dict[int, ConnectedPlayer] = {player1.id: player1, player2.id: player2}
         self.setPlayersForGame()
         self.playerOnTurn: int = 0
         self.shottedPos = [-1, -1]
     def setPlayersForGame(self):
         for p in self.players.values():
+            p.inGame = True
             p.gameId = self.id
 
     def updateGameState(self, player: ConnectedPlayer, state):
         # TODO: validation of the game state?
-        assert player.id in self.players, 'trying to update player game state for nonexistent player'
         player.gameState = state
     def getOpponentState(self, player):
         return self.getOpponent(player).gameState
@@ -53,23 +82,29 @@ class Game:
     def playerDisconnect(self, player: ConnectedPlayer):
         player.disconnect()
         self.gameActive = False
+    def gameReadiness(self, player: ConnectedPlayer, payload: dict) -> bool:
+        '''returns if the request was approved'''
+        if payload['ready'] or self.gameStage == STAGES.PLACING:
+            self.updateGameState(player, payload)
+            if self.canStartShooting():
+                self.startShooting()
+            return True
+        return False
     def canStartShooting(self):
         return self.gameStage == STAGES.PLACING and all([p.shootingReady() for p in self.players.values()])
     def startShooting(self):
-        assert self.gameStage == STAGES.PLACING, 'Game needs to be in the placing stage to be started'
-        logging.info(f'starting game id {self.id}')
+        assert self.gameStage == STAGES.PLACING, 'Game needs to be in the placing stage to start shooting'
+        logging.info(f'starting shooting game id {self.id}')
         self.gameStage = STAGES.SHOOTING
         self.playerOnTurn = random.choice(list(self.players.keys()))
-    def opponentShotted(self, player: ConnectedPlayer) -> tuple[bool, list[int], bool]:
-        '''@return (bool - opponent shotted already, list[int] - where opponent shotted, bool - if you lost'''
-        shotted = self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
+    def opponentShottedReq(self, player: ConnectedPlayer) -> tuple[bool, list[int], bool]:
+        '''request called when responding to COM.OPPONENT_SHOT
+        @return (list[int] - where opponent shotted, bool - if you lost'''
         pos = self.shottedPos
-        lost = self.gameStage == STAGES.END
-        if shotted:
-            self.swapTurn()
-        if lost:
-            self.gameActive = False
-        return shotted, pos, lost
+        self.swapTurn()
+        return pos, self.gameStage == STAGES.WON
+    def didOpponentShoot(self, player) -> bool:
+        return self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
     def shoot(self, player, pos) -> tuple[bool, dict, bool]:
         '''@player - player who shotted
         @pos - (x, y) pos where did he shoot
@@ -87,12 +122,9 @@ class Game:
                 gameWon = all([all(ship['hitted']) for ship in self.getOpponentState(player)['ships']])
                 return True, wholeShip, gameWon
         return False, None, False
-    def gameWon(self):
-        self.gameStage = STAGES.END
 
 
 class Server:
-    MAX_TIME_FOR_DISCONNECT = 15.
     def __init__(self, addr):
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind(addr)
@@ -102,146 +134,248 @@ class Server:
         self.players: dict[int, ConnectedPlayer] = dict()
         self.games: dict[int, Game] = dict()
 
-    def loop(self):
-        while True:
+        self.waitingReqs: queue.Queue[Request] = queue.Queue()
+        self.blockingReqs: dict[int, BlockingRequest] = {}
+        self.closeEvent = threading.Event()
+
+    # errors ----------------------------
+    def unknownPlayerError(self, req: Request):
+        logging.warning(f'unknown player id {req.playerId}, ignoring')
+        self.sendErrorResponse(req, 'unknown_id')
+    def unrecognizedCommandError(self, req: Request):
+        logging.warning(f'unrecognized command {req.command}')
+        self.sendErrorResponse(req, 'unrecognized_command')
+    def sendErrorResponse(self, req: Union[Request, BlockingRequest], errorType):
+        req.stayConnected = False
+        if isinstance(req, BlockingRequest):
+            self.blockingReqs.pop(req.player.id)
+        self._sendResponse(req, {'error_type': errorType}, command=COM.ERROR)
+    # -----------------------------------
+
+    def unknownIdReq(self, req: Request):
+        if req.command == COM.CONNECT:
+            player = self.newConnectedPlayer()
+            self.players[player.id] = player
+            logging.info(f'connecting new player from {req.conn.getpeername()}')
+            req.playerId = player.id
+            self._sendResponse(req, {'id': player.id})
+        else:
+            self.unknownPlayerError(req)        
+
+    def dispatchRequest(self, req: Request):
+        if req.playerId in self.players:        
+            player = self.players[req.playerId]
+            player.lastReqTime = time.time()
+        self.waitingReqs.put(req)
+    
+    def acceptLoop(self):
+        while not self.closeEvent.is_set() or self.players:
             try:
                 conn, addr = self.serverSocket.accept()
+                req = self._recvReq(conn)
+                self.dispatchRequest(req)           
             except socket.timeout:
                 pass
-            else:
-                self.handleQuery(conn)
             finally:
                 self.checkConnections()
+                self.checkGames()
+            
     
-    def handleQueriesOutGame(self, conn: socket.socket, player: ConnectedPlayer, command: str, payload: dict) -> bool:
-        '''handles requests from players who aren't necessary in a game
-        @return True if the command was recognized'''
-        if command == COM.DISCONNECT:
+    def checkGames(self):
+        for game in list(self.games.values()):
+            if game.canBeEnded():
+                self.endGame(game)
+
+    def waitingReqsHandler(self):
+        while not self.closeEvent.is_set() or self.players or self.blockingReqs:
+            try:
+                req  = self.waitingReqs.get(timeout=1.)
+            except queue.Empty:
+                pass
+            else:
+                self.handleIncomingReq(req)
+            finally:
+                self.checkWaitingReqs()
+    def handleIncomingReq(self, req: Request):
+        if req.playerId not in self.players:
+            return self.unknownIdReq(req)
+        
+        player = self.players[req.playerId]
+        assert player.connected, 'recvd req from player marked as disconnected'
+        if player.id in self.blockingReqs:
+            self.respondBlockingReq(player, useDefault=True)
+        
+        if req.command == COM.DISCONNECT:
+            req.stayConnected = False
+            self._sendResponse(req)
             self.disconnectPlayer(player)
-            self._sendResponse(conn, player.id, COM.DISCONNECT)
-        elif command == COM.PAIR:
-            game = self.pairPlayer(conn, player)
-            if game:
-                self.games[game.id] = game
-        elif command == COM.CONNECTION_CHECK:
-            stayConnected = not player.inGame
-            if player.inGame:
-                game = self.games[player.gameId]
-                stayConnected = game.gameActive
-            self._sendResponse(conn, player.id, COM.CONNECTION_CHECK, {'stay_connected': stayConnected})
+        elif req.command == COM.PAIR:
+            self.pairPlayer(player, req)
+        elif req.command == COM.CONNECTION_CHECK:
+            self.addBlockingReq(player, req, {})
         else:
-            return False
-        return True
-    
-    def handleQueriesInGame(self, conn: socket.socket, player: ConnectedPlayer, command: str, payload: dict, game: Game) -> bool:
-        '''handles queries from players who should be in a game
-        @return True if the command was recognized'''
-        if command == COM.GAME_READINESS:
-            approved = False
-            if payload['ready'] or game.gameStage == STAGES.PLACING:
-                game.updateGameState(player, payload)
-                approved = True
-            self._sendResponse(conn, player.id, COM.GAME_READINESS, {'approved': approved})
-        elif command == COM.GAME_WAIT:
-            assert player.shootingReady(), 'Don\'t expect a COM.GAME_WAIT from player without being ready'
-            if game.canStartShooting():
-                game.startShooting()
-            self._sendResponse(conn, player.id, COM.GAME_WAIT, {'started': game.gameStage == STAGES.SHOOTING, 'on_turn': game.playerOnTurn})
-        elif command == COM.SHOOT:
-            # NOTE: when the player on turn shoot before the other player makes COM.OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
-            hitted, wholeShip, gameWon = game.shoot(player, payload['pos'])
-            if gameWon:
-                game.gameWon()
-            self._sendResponse(conn, player.id, COM.SHOOT, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
-        elif command == COM.OPPONENT_SHOT:
-            shotted, pos, lost = game.opponentShotted(player)
-            self._sendResponse(conn, player.id, COM.OPPONENT_SHOT, {'shotted': shotted, 'pos': pos, 'lost': lost})
-        else:
-            return False
-        return True
-    def handleQuery(self, conn: socket.socket):
-        player, command, payload = self._recvQuery(conn)
-        
-        if command == COM.CONNECT:
-            logging.info(f'connecting new player from {conn.getpeername()}')
-            player = self.newConnectedPlayer()
-            assert player.id not in self.players
-            self.players[player.id] = player
-            self._sendResponse(conn, player.id, COM.CONNECT, {'id': player.id})
-            return
+            assert player.gameId in self.games
+            game = self.games[player.gameId]
+            req.stayConnected = game.gameActive
 
-        assert isinstance(player, ConnectedPlayer), 'incoming id is not in self.players'
-        player.lastReqTime = time.time()
-
-        if self.handleQueriesOutGame(conn, player, command, payload):
-            return
-        
-        assert player.inGame, 'player is expected to be in a game at this point'
-        game = self.games[player.gameId]
-        
-        if not self.handleQueriesInGame(conn, player, command, payload, game):
-            assert False, f'unrecognized command: {command}'
+            if req.command == COM.GAME_READINESS:
+                self.handleGameReadiness(player, game, req)
+            elif req.command == COM.GAME_WAIT:
+                self.handleGameWait(player, game, req)
+            elif req.command == COM.SHOOT:
+                # NOTE: when the player on turn shoot before the other player makes COM.OPPONENT_SHOT this will crash, because the game.swapOnTurn() didn't yet happen 
+                self.shootReq(player, game, req)
+            elif req.command == COM.OPPONENT_SHOT:
+                self.opponentShotted(player, game, req)
+            else:
+                self.unrecognizedCommandError(req)
 
     def checkConnections(self):
-        for player in self.players.copy().values():
-            if time.time() - player.lastReqTime > self.MAX_TIME_FOR_DISCONNECT:
-                self.disconnectPlayer(player)
+        for player in list(self.players.values()):
+            if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
+                if player.connected:
+                    print(f'disconnecting player {player.id} due to not receiving requests')
+                    self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player: ConnectedPlayer):
-        logging.info(f'disconnecting player {player.id}')
         if player.inGame:
             game = self.games[player.gameId]
             game.playerDisconnect(player)
-            if game.canBeEnded():
-                self.endGame(game)
         else:
-            self.players.pop(player.id)
+            if player.id in self.blockingReqs:
+                self.respondBlockingReq(player, {}, stayConnected=False)
+            player.disconnect()
+            self.removePlayer(player)
+    def removePlayer(self, player: ConnectedPlayer):
+        assert player.id in self.players and not player.connected
+        self.players.pop(player.id)
+    def removeGame(self, game: Game):
+        assert game.id in self.games and game.canBeEnded()
+        self.games.pop(game.id)
     def endGame(self, game: Game):
         logging.info(f'ending game id {game.id}')
-        for pid in game.players.keys():
-            assert pid in self.players, 'all players in a game should be in connected players'
-            self.players.pop(pid)
-        self.games.pop(game.id)
+        for p in game.players.values():
+            self.removePlayer(p)
+        self.removeGame(game)
 
-    def _pairablePlayers(self, player: ConnectedPlayer):
-        return list(filter(lambda p: not p.inGame and p.id != player.id, self.players.values()))
-    def pairPlayer(self, conn, player: ConnectedPlayer) -> Union[Game, None]:
-        pairable = self._pairablePlayers(player)
-        game = None
+
+    def addBlockingReq(self, player: ConnectedPlayer, req: Request, defaultResponse: dict):
+        '''adds to blockingReqs for player, the defaults are sent back if the request times out or the same player sends another req'''
+        assert player.id not in self.blockingReqs, 'only one blocking req per player'
+        logging.debug(f'adding blocking request {req.command}')
+        self.blockingReqs[player.id] = BlockingRequest(req, player, time.time(), defaultResponse)
+    def respondBlockingReq(self, player: ConnectedPlayer, payload: dict={}, *, useDefault=False):
+        '''sends response for blocking req for this player
+        , if 'useDefault' it sends the default response in the 'BlockingRequest', 
+        otherwise it sends supplied response'''
+        req = self.blockingReqs.pop(player.id)
+        self._sendResponse(req, req.defaultResponse if useDefault else payload)
+
+    def _isPlayerPairableWith(self, player: ConnectedPlayer, possibleOpponent: ConnectedPlayer):
+        return not possibleOpponent.inGame and possibleOpponent.id != player.id
+    def findOpponent(self, player: ConnectedPlayer) -> Optional[ConnectedPlayer]:
+        for req in self.blockingReqs.values(): # primarily try to find a opponent from the waiting reqs
+            if req.req.command == COM.PAIR and self._isPlayerPairableWith(player, req.player):
+                return req.player
+        possible = list(filter(lambda p: self._isPlayerPairableWith(player, p), self.players.values()))
+        if len(possible) == 0: return None
+        opponent = possible[0]
+        if opponent.id in self.blockingReqs: assert self.blockingReqs[opponent.id].req.command == COM.PAIR, 'if the opponent _isPairableWith then any blocking req must be a COM.PAIR'
+        return opponent
+    def pairPlayer(self, player: ConnectedPlayer, req: Request):
         if player.inGame:
-            assert player.gameId in self.games, 'player with unknown gameId in pairPlayer'
             game = self.games[player.gameId]
-        elif len(pairable) > 0:
-            opponent = pairable[0]
-            game = self.newGame(player, opponent)
-            logging.info(f'paired {player.id} with {game.getOpponent(player).id}')
-
-        failed = game is None
-        opponentId = 0 if failed else game.getOpponent(player).id
-        self._sendResponse(conn, player.id, COM.PAIR, {'paired': not failed, 'opponent_id': opponentId})
-        return game
+            game.gameStage = STAGES.PLACING
+            return self._sendResponse(req, {'paired': True})
+        opponent = self.findOpponent(player)
+        if opponent is None:
+            self.addBlockingReq(player, req, {'paired': False})
+        else:
+            bothPaired = False
+            if opponent.id in self.blockingReqs:
+                self.respondBlockingReq(opponent, {'paired': True})
+                bothPaired = True
+            self.addNewGame(player, opponent, bothPaired)
+            self._sendResponse(req, {'paired': True})
+    def handleGameReadiness(self, player: ConnectedPlayer, game: Game, req: Request):
+        approved = game.gameReadiness(player, req.payload)
+        self._sendResponse(req, {'approved': approved})
+        if game.gameStage == STAGES.SHOOTING:
+            opponent = game.getOpponent(player)
+            if opponent.id in self.blockingReqs:
+                assert self.blockingReqs[opponent.id].command == COM.GAME_WAIT
+                self.respondBlockingReq(opponent, {'started': True, 'on_turn': game.playerOnTurn})
+    def handleGameWait(self, player: ConnectedPlayer, game: Game, req: Request):
+        assert player.shootingReady(), 'Don\'t expect a COM.GAME_WAIT from player without being ready'
+        if game.gameStage == STAGES.SHOOTING:
+            self._sendResponse(req, {'started': True, 'on_turn': game.playerOnTurn})
+        else:
+            self.addBlockingReq(player, req, {'started': False})
+    def shootReq(self, player: ConnectedPlayer, game: Game, req: Request):
+        hitted, wholeShip, gameWon = game.shoot(player, req.payload['pos'])
+        if gameWon:
+            game.gameStage = STAGES.WON
+            req.stayConnected = False
+        opponent = game.getOpponent(player)
+        if opponent.id in self.blockingReqs:
+            blocking = self.blockingReqs[opponent.id]
+            assert blocking.command == COM.OPPONENT_SHOT
+            self.sendOpponentShottedRes(opponent, game, blocking)    
+        self._sendResponse(req, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
+    def opponentShotted(self, player: ConnectedPlayer, game: Game, req: Request):
+        if game.didOpponentShoot(player):
+            self.sendOpponentShottedRes(player, game, req)
+        else:
+            self.addBlockingReq(player, req, {'shotted': False})
+    def sendOpponentShottedRes(self, player: ConnectedPlayer, game: Game, req):
+        pos, lost = game.opponentShottedReq(player)
+        payload = {'shotted': True, 'pos': pos, 'lost': lost}
+        if lost:
+            req.stayConnected = False
+        if isinstance(req, Request):
+            self._sendResponse(req, payload)
+        else:
+            assert isinstance(req, BlockingRequest) and player.id in self.blockingReqs
+            self.respondBlockingReq(player, payload)
+    def checkWaitingReqs(self):
+        for req in list(self.blockingReqs.values()):
+            if time.time() - req.timeRecvd > MAX_TIME_FOR_BLOCKING or self.closeEvent.is_set():
+                self.respondBlockingReq(req.player, useDefault=True)
+            elif req.player.inGame:
+                game = self.games[req.player.gameId]
+                if not game.gameActive:
+                    req.stayConnected = False
+                    self.respondBlockingReq(req.player, useDefault=True)
 
     def newConnectedPlayer(self):
         id = self._generateNewID(self.players)
         return ConnectedPlayer(id)
-    def newGame(self, player1, player2):
+    def addNewGame(self, player1, player2, bothPaired: bool):
         id = self._generateNewID(self.games)
-        return Game(id, player1, player2)
+        game = Game(id, player1, player2, bothPaired)
+        self.games[id] = game
+        logging.info(f'starting new game id {id}')
     def _generateNewID(self, dictOfIds):
         bounds = (1000, 2**20)
         id = random.randint(*bounds)
         while id in dictOfIds:
             id = random.randint(*bounds)
+        assert id not in dictOfIds
         return id
 
-    def _recvQuery(self, conn: socket.socket) -> tuple[ConnectedPlayer, str, dict]:
+    def _recvReq(self, conn: socket.socket) -> Request:
         id, command, payload = ConnectionPrimitives.recv(conn)
-        player = None
-        if id in self.players: 
-            player = self.players[id]
-        return player, command, payload
-    def _sendResponse(self, conn: socket.socket, id: int, command: str, payload: dict={}):
-        ConnectionPrimitives.send(conn, id, command, payload)
+        req = Request(conn, id, command, payload)
+        return req
+    def _sendResponse(self, req: Union[Request, BlockingRequest], payload: dict={}, command=None):
+        if isinstance(req, BlockingRequest):
+            req = req.req
+        if command is None:
+            command = req.command
+        payload.update({'stay_connected': req.stayConnected and not self.closeEvent.is_set()})
+        assert req.playerId != 0
+        ConnectionPrimitives.send(req.conn, req.playerId, command, payload)
+        req.conn.close()
 
 
 def serverMain():
@@ -249,6 +383,23 @@ def serverMain():
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
-    server.loop()    
+    
+    acceptThread = threading.Thread(target=server.acceptLoop, name='Thread-Accept')
+    acceptThread.start()
+
+    waitingReqsThread = threading.Thread(target=server.waitingReqsHandler, name='Thread-WaitingReqs')
+    waitingReqsThread.start()
+
+    try:
+        while acceptThread.is_alive() and waitingReqsThread.is_alive():
+            time.sleep(3)
+    except KeyboardInterrupt:
+        print('Keyboard-Interrupt')
+        server.closeEvent.set()
+        acceptThread.join()
+        waitingReqsThread.join()
+    else: # thread died
+        raise RuntimeError('Worker thread died')
+
 if __name__ == '__main__':
     serverMain()
