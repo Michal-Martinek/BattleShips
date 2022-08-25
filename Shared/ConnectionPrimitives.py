@@ -28,7 +28,6 @@ def recv(conn: socket.socket) -> tuple[int, str, dict]:
     return id, command, payload
 def recvWholeResponse(conn: socket.socket):
     res = conn.recv(2048)
-    print('len recvd', len(res), res)
     if len(res) < MSGLEN_SIZE:
         res = _recvBytes(conn, MSGLEN_SIZE - len(res), res)
     responseLen = int.from_bytes(res[:MSGLEN_SIZE], byteorder='big') + MSGLEN_SIZE
@@ -36,7 +35,6 @@ def recvWholeResponse(conn: socket.socket):
         res = _recvBytes(conn, responseLen - len(res), res)
 
     conn.shutdown(socket.SHUT_RD)
-    print('true len', len(res))
     return res[MSGLEN_SIZE:]
 def _recvBytes(conn, num, prevRecvd) -> bytes:
     '''receives excactly num bytes'''

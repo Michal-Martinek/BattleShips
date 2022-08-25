@@ -25,12 +25,13 @@ class Game:
 
     def gameReadiness(self):
         assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
+        if self.session.alreadySent[COM.GAME_READINESS]: return
         state =  {'ships': self.grid.shipsDicts(), 'ready': self.gameStage != STAGES.GAME_WAIT}
         wasPlacing = self.gameStage == STAGES.PLACING
         lamda = lambda res: self.gameReadinessCallback(wasPlacing, res)
         if self.gameStage == STAGES.PLACING:
             self.newGameStage(STAGES.GAME_WAIT)
-        self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True) # TODO: if we can't send we should reattempt when the response arrives
+        self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True)
     def gameReadinessCallback(self, wasPlacing, res):
         assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
         if not wasPlacing and res['approved']:
@@ -66,7 +67,7 @@ class Game:
         elif self.gameStage == STAGES.GAME_WAIT:
             self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
         elif self.gameStage == STAGES.GETTING_SHOT:
-            self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True) # TODO: sort out these names - geting / getting, shot / shoted / shotted and rename COM to GETTING_SHOT
+            self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True)
         self.session.spawnConnectionCheck()
 
     @ property

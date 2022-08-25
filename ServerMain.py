@@ -138,12 +138,17 @@ class Server:
         self.blockingReqs: dict[int, BlockingRequest] = {}
         self.closeEvent = threading.Event()
 
-    # errors ---------------------------- # TODO: spawn errors and properly respond server closing error if the server is closing
-    def unknownPlayerError(self, req):
-        logging.warning('unknown player, ignoring')
+    # errors ----------------------------
+    def unknownPlayerError(self, req: Request):
+        logging.warning(f'unknown player id {req.playerId}, ignoring')
         self.sendErrorResponse(req, 'unknown_id')
-    def sendErrorResponse(self, req, errorType):
+    def unrecognizedCommandError(self, req: Request):
+        logging.warning(f'unrecognized command {req.command}')
+        self.sendErrorResponse(req, 'unrecognized_command')
+    def sendErrorResponse(self, req: Union[Request, BlockingRequest], errorType):
         req.stayConnected = False
+        if isinstance(req, BlockingRequest):
+            self.blockingReqs.pop(req.player.id)
         self._sendResponse(req, {'error_type': errorType}, command=COM.ERROR)
     # -----------------------------------
 
@@ -223,7 +228,7 @@ class Server:
             elif req.command == COM.OPPONENT_SHOT:
                 self.opponentShotted(player, game, req)
             else:
-                assert False, f'unreachable: probably invalid command: "{req.command}"'
+                self.unrecognizedCommandError(req)
 
     def checkConnections(self):
         for player in list(self.players.values()):
@@ -349,6 +354,7 @@ class Server:
         id = self._generateNewID(self.games)
         game = Game(id, player1, player2, bothPaired)
         self.games[id] = game
+        logging.info(f'starting new game id {id}')
     def _generateNewID(self, dictOfIds):
         bounds = (1000, 2**20)
         id = random.randint(*bounds)
