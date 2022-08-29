@@ -4,15 +4,19 @@ from .Session import Session
 from Shared.Enums import SHOTS, STAGES, COM
 
 class Game:
-    def __init__(self):
+    def __init__(self, window: pygame.Surface):
         self.session = Session()
         self.grid = Grid()
         self.gameStage: STAGES = STAGES.CONNECTING
+
+        self.font = pygame.font.SysFont('arial', 40)
+        self.window = window
     def newGameStage(self, stage: STAGES):
         assert stage != self.gameStage
         self.gameStage = stage
         if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
             self.session.disconnect()
+        self.drawStatic(self.window)
 
     # requests -------------------------------------------------
     def connectCallback(self, res):
@@ -75,34 +79,26 @@ class Game:
         return self.gameStage == STAGES.GAME_WAIT
     # controls and API -------------------------------------------------
     def rotateShip(self):
-        self.grid.rotateShip()
+        if self.gameStage == STAGES.PLACING:
+            self.grid.rotateShip()
     def changeCursor(self):
-        if not self.grid.allShipsPlaced():
+        if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
             self.grid.changeCursor(pygame.mouse.get_pos())
     def mouseClick(self, mousePos, rightClick):
-        if not self.readyForGame:
+        if self.gameStage == STAGES.PLACING:
             changed = self.grid.mouseClick(mousePos, rightClick)
             if changed:
                 self.toggleGameReady()
+        elif self.gameStage == STAGES.SHOOTING and not rightClick:
+            self.shoot(mousePos)
     def changeShipSize(self, increment: int):
-        if not self.grid.allShipsPlaced():
+        if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
             self.grid.changeSize(increment)
-    def drawGame(self, window, font):
-        self.grid.drawGrid(window)
-        if self.readyForGame:
-            surf = font.render('Waiting for the other player to place ships...', True, (0, 0, 0), (255, 255, 255))
-            pygame.draw.rect(window, (0, 0, 0), (25, 200, surf.get_width(), surf.get_height()), 5)
-            window.blit(surf, (25, 200))
-    def drawOnTurn(self, window):
-        self.grid.drawShotted(window)
-    def drawOutTurn(self, window):
-        self.grid.drawGrid(window)
     def shoot(self, mousePos):
         if self.gameStage == STAGES.SHOOTING:
             gridPos = self.grid.shoot(mousePos)
             if gridPos:
                 self.shootReq(gridPos)
-
     def autoplace(self):
         assert not self.readyForGame
         self.grid.autoplace()
@@ -112,6 +108,32 @@ class Game:
             logging.debug('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
             self.gameReadiness()
     
+    def drawGame(self, window):
+        if self.gameStage == STAGES.PLACING:
+            self.grid.drawPlaced(window)
+            self.grid.drawFlying(window)
+        elif self.gameStage == STAGES.SHOOTING:
+            self.grid.drawShooting(window)
+        elif self.gameStage == STAGES.GETTING_SHOT:
+            self.grid.drawPlaced(window)
+            self.grid.drawMineNotHitted(window)
+    def drawStatic(self, window):
+        if self.gameStage == STAGES.PAIRING:
+            window.fill((255, 255, 255))
+            self._renderMessage('Waiting for opponent...', (50, 300))
+        elif self.gameStage == STAGES.GAME_WAIT:
+            self.grid.drawPlaced(window) # TODO: the flying ship stays floating
+            label = self.font.render('Waiting for the other player to place ships...', True, (0, 0, 0), (255, 255, 255))
+            pygame.draw.rect(window, (0, 0, 0), (23, 198, label.get_width() + 4, label.get_height() + 4), 5)
+            self._renderMessage('Waiting for the other player to place ships...', (25, 200))
+        elif self.gameStage in [STAGES.WON, STAGES.LOST]:
+            window.fill((255, 255, 255))
+            message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
+            self._renderMessage(message, (150, 300))
+    def _renderMessage(self, message: str, pos, color=(0, 0, 0)):
+        label = self.font.render(message, True, color)
+        self.window.blit(label, pos)
+
 class Grid:
     def __init__(self):
         self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
@@ -123,7 +145,7 @@ class Grid:
 
     def shipsDicts(self):
         return [ship.asDict() for ship in self.placedShips]
-    def allShipsPlaced(self):
+    def allShipsPlaced(self):  # TODO: excuse me wth
             return not any(self.shipSizes.values()) 
 
     def rotateShip(self):
@@ -237,20 +259,22 @@ class Grid:
                 for y in range(rect.y, rect.y + rect.height):
                     if self.shottedMap[y][x] == SHOTS.NOT_SHOTTED:
                         self.shottedMap[y][x] = SHOTS.BLOCKED
-
-    def drawGrid(self, window):
-        self.drawGridlines(window)
+    
+    def drawPlaced(self, window):
+        self._drawGridlines(window)
         for ship in self.placedShips:
             ship.draw(window)
+    def drawMineNotHitted(self, window):
         for y, row in enumerate(self.mineNotHitted):
             for x, col in enumerate(row):
                 if col == SHOTS.NOT_HITTED:
                     pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
                     pygame.draw.circle(window, (0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
+    def drawFlying(self, window):
         if self.flyingShip.size:
             self.flyingShip.draw(window)
-    def drawShotted(self, window):
-        self.drawGridlines(window)
+    def drawShooting(self, window):
+        self._drawGridlines(window)
         for y, lineShotted in enumerate(self.shottedMap):
             for x, shotted in enumerate(lineShotted):
                 pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
@@ -262,9 +286,9 @@ class Grid:
                     pygame.draw.circle(window, (128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
         for ship in self.wholeHittedShips:
-            ship.drawWholeHitted(window)
+            ship.draw(window)
         
-    def drawGridlines(self, window):
+    def _drawGridlines(self, window):
         for row in range(Constants.GRID_HEIGHT):
             yCoord = Constants.GRID_Y_SPACING * row
             pygame.draw.line(window, (0, 0, 0), (0, yCoord), (Constants.SCREEN_WIDTH, yCoord))
@@ -309,12 +333,12 @@ class Ship:
     def heightInGrid(self):
         return (self.size - 1) * (not self.horizontal) + 1
     @ property
-    def realPos(self):
+    def realPos(self) -> list[int]:
         if self.pos == [-1, -1]:
             mouseX, mouseY = pygame.mouse.get_pos()
-            return mouseX - self.widthInGrid * Constants.GRID_X_SPACING // 2, mouseY - self.heightInGrid * Constants.GRID_Y_SPACING // 2
+            return [mouseX - self.widthInGrid * Constants.GRID_X_SPACING // 2, mouseY - self.heightInGrid * Constants.GRID_Y_SPACING // 2]
         else:
-            return self.pos[0] * Constants.GRID_X_SPACING, self.pos[1] * Constants.GRID_Y_SPACING
+            return [self.pos[0] * Constants.GRID_X_SPACING, self.pos[1] * Constants.GRID_Y_SPACING]
     @ property
     def realRect(self):
         '''Rect of real ship coordinates'''
@@ -351,18 +375,18 @@ class Ship:
         return False
     
     def draw(self, window):
+        allHitted = all(self.hitted)
+        lastPos = self.realPos
+        lastPos[0] += Constants.GRID_X_SPACING // 2
+        lastPos[1] += Constants.GRID_Y_SPACING // 2
         for hitted, (x, y) in zip(self.hitted, self.getRealSegmentCoords()):
             pygame.draw.rect(window, (0, 0, 0), (x, y, Constants.GRID_X_SPACING, Constants.GRID_Y_SPACING), 1)
             if hitted:
                 pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
                 pygame.draw.circle(window, (255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+                if allHitted:
+                    pygame.draw.circle(window, (0, 0, 0), pos, Constants.GRID_X_SPACING // 8)
+                    pygame.draw.line(window, (0, 0, 0), lastPos, pos, 3)
+                    lastPos = pos
         pygame.draw.rect(window, (0, 0, 0), self.realRect, 4)
-    def drawWholeHitted(self, window):
-        for (x, y) in self.getRealSegmentCoords():
-            pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
-            pygame.draw.circle(window, (0, 0, 0), pos, Constants.GRID_X_SPACING // 8)
-        
-        pos = self.realPos
-        start = pos[0] + Constants.GRID_X_SPACING // 2, pos[1] + Constants.GRID_Y_SPACING // 2
-        end = pos[0] + (self.widthInGrid - 1) * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, pos[1] + (self.heightInGrid - 1) * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2
-        pygame.draw.line(window, (0, 0, 0), start, end, 3)
+            
