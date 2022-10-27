@@ -105,7 +105,7 @@ class Game:
     # drawing --------------------------------
     def drawGame(self):
         if self.gameStage in [STAGES.PLACING, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
-            Frontend.fill((255, 255, 255))
+            Frontend.fill((0, 0, 255))
         if self.gameStage == STAGES.PLACING:
             self.grid.drawPlaced()
             self.grid.drawFlying()
@@ -118,7 +118,7 @@ class Game:
             return
         Frontend.update()
     def drawStatic(self):
-        Frontend.fill((255, 255, 255))
+        Frontend.fill((0, 0, 255))
         if self.gameStage == STAGES.PAIRING:
             Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...', (0, 0, 0))
         elif self.gameStage == STAGES.GAME_WAIT:
@@ -144,7 +144,7 @@ class Grid:
     def allShipsPlaced(self):  # TODO: excuse me wth
             return not any(self.shipSizes.values()) 
 
-    def rotateShip(self):
+    def rotateShip(self): # TODO: maybe the one-ship shouldn't be turned?
         self.flyingShip.horizontal = not self.flyingShip.horizontal
     def changeCursor(self, mousePos):
         clicked = self._getClickedShip(mousePos)
@@ -275,7 +275,7 @@ class Grid:
                 if shotted == SHOTS.HITTED:
                     Frontend.draw.circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.NOT_HITTED:
-                    Frontend.draw.circle((0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw.circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.BLOCKED:
                     Frontend.draw.circle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
@@ -283,13 +283,11 @@ class Grid:
             ship.draw()
         
     def _drawGridlines(self):
-        for row in range(Constants.GRID_HEIGHT):
-            yCoord = Constants.GRID_Y_SPACING * row
-            Frontend.draw.line((0, 0, 0), (0, yCoord), (Constants.SCREEN_WIDTH, yCoord), 1)
-        for col in range(Constants.GRID_WIDTH):
-            xCoord = Constants.GRID_X_SPACING * col
-            Frontend.draw.line((0, 0, 0), (xCoord, 0), (xCoord, Constants.SCREEN_HEIGHT), 1)
-
+        for row in range(0, Constants.SCREEN_HEIGHT, Constants.GRID_Y_SPACING):
+            for col in range(0, Constants.SCREEN_WIDTH, Constants.GRID_X_SPACING):
+                crossRect = Frontend.cross.get_rect()
+                crossRect.center = (col - crossRect.width // 2, row - crossRect.height // 2)
+                Frontend.blit(Frontend.cross, crossRect)
 
 class Ship:
     def __init__(self, pos: list, size, horizontal, hitted=None):
@@ -371,10 +369,14 @@ class Ship:
     def draw(self):
         allHitted = all(self.hitted)
         lastPos = self.realPos
+        img = Frontend.images[self.size-1 + self.horizontal*4]
+        center = img.get_rect()
+        center.center = self.realRect.center
+        Frontend.blit(img, center)
         lastPos[0] += Constants.GRID_X_SPACING // 2
         lastPos[1] += Constants.GRID_Y_SPACING // 2
+        # TODO: draw hitted ship parts properly
         for hitted, (x, y) in zip(self.hitted, self.getRealSegmentCoords()):
-            Frontend.draw.rect((0, 0, 0), (x, y, Constants.GRID_X_SPACING, Constants.GRID_Y_SPACING), 1)
             if hitted:
                 pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
                 Frontend.draw.circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
@@ -382,5 +384,4 @@ class Ship:
                     Frontend.draw.circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 8)
                     Frontend.draw.line((0, 0, 0), lastPos, pos, 3)
                     lastPos = pos
-        Frontend.draw.rect((0, 0, 0), self.realRect, 4)
             

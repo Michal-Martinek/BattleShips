@@ -3,6 +3,9 @@ os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 from . import Constants
 
+# TODO: make the drawing in separate process to save performance and allow easier animations?
+graphicsDir = os.path.join('Client', 'Graphics')
+
 pygame.init()
 display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
 fonts: dict[str, pygame.font.Font] = {
@@ -10,6 +13,16 @@ fonts: dict[str, pygame.font.Font] = {
 	'ArialBig':    pygame.font.SysFont('arial', 60),
 	'ArialSmall':  pygame.font.SysFont('arial', 20),
 }
+def loadImages(names, subdir='', colorkey=(255, 174, 201)) -> list[pygame.Surface]:
+	imgs = []
+	for name in names:
+		img = pygame.image.load(os.path.join(graphicsDir, subdir, name))
+		img.set_colorkey(colorkey)
+		imgs.append(img)
+	return imgs
+# TODO: resize the images to fit them better on the screen
+images = loadImages(['ship-1V.png', 'ship-2V.png', 'ship-3V.png', 'ship-4V.png', 'ship-1H.png', 'ship-2H.png', 'ship-3H.png', 'ship-4H.png'], subdir='Ships')
+cross = loadImages(['grid-cross.png'])[0]
 
 class draw:
 	@ staticmethod
