@@ -22,7 +22,7 @@ Once you start the server a message like this will pop up:
 ```cmd
 INFO:root:server ready and listening at 192.168.0.159:1250
 ```
-You will need to make sure that the SERVER_ADDRES constant on top of the Session class in ./Client/Session.py is the same as the server address reported in the message.
+You will need to make sure that the SERVER_ADDRES constant above the Session class in [./Client/Session.py](./Client/Session.py) is the same as the server address reported in the message.
 
 ## Controls
 #### LMB
