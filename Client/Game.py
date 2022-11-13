@@ -1,6 +1,7 @@
 import logging, sys
 from pygame import Rect, mouse
-from . import Constants, Frontend
+from . import Constants
+from .Frontend import Frontend
 from .Session import Session
 from Shared.Enums import SHOTS, STAGES, COM
 
@@ -93,6 +94,8 @@ class Game:
     def changeShipSize(self, increment: int):
         if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
             self.grid.changeSize(increment)
+    def advanceAnimations(self):
+        Ship.advanceAnimations()
     def shoot(self, mousePos):
         if self.gameStage == STAGES.SHOOTING:
             gridPos = self.grid.shoot(mousePos)
@@ -104,8 +107,6 @@ class Game:
             self.gameReadiness()
     # drawing --------------------------------
     def drawGame(self):
-        if self.gameStage in [STAGES.PLACING, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
-            Frontend.fill((0, 0, 255))
         if self.gameStage == STAGES.PLACING:
             self.grid.drawPlaced()
             self.grid.drawFlying()
@@ -118,7 +119,7 @@ class Game:
             return
         Frontend.update()
     def drawStatic(self):
-        Frontend.fill((0, 0, 255))
+        Frontend.fill_color((255, 255, 255))
         if self.gameStage == STAGES.PAIRING:
             Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...', (0, 0, 0))
         elif self.gameStage == STAGES.GAME_WAIT:
@@ -255,7 +256,7 @@ class Grid:
                         self.shottedMap[y][x] = SHOTS.BLOCKED
     
     def drawPlaced(self):
-        self._drawGridlines()
+        Frontend.fill_backgnd()
         for ship in self.placedShips:
             ship.draw()
     def drawMineNotHitted(self):
@@ -263,33 +264,29 @@ class Grid:
             for x, col in enumerate(row):
                 if col == SHOTS.NOT_HITTED:
                     pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
-                    Frontend.draw.circle((0, 0, 255), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((0, 0, 128), pos, Constants.GRID_X_SPACING // 4)
     def drawFlying(self):
         if self.flyingShip.size:
             self.flyingShip.draw()
     def drawShooting(self):
-        self._drawGridlines()
+        Frontend.fill_backgnd()
         for y, lineShotted in enumerate(self.shottedMap):
             for x, shotted in enumerate(lineShotted):
                 pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
                 if shotted == SHOTS.HITTED:
-                    Frontend.draw.circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.NOT_HITTED:
-                    Frontend.draw.circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.BLOCKED:
-                    Frontend.draw.circle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
         for ship in self.wholeHittedShips:
             ship.draw()
-        
-    def _drawGridlines(self):
-        for row in range(0, Constants.SCREEN_HEIGHT, Constants.GRID_Y_SPACING):
-            for col in range(0, Constants.SCREEN_WIDTH, Constants.GRID_X_SPACING):
-                crossRect = Frontend.cross.get_rect()
-                crossRect.center = (col - crossRect.width // 2, row - crossRect.height // 2)
-                Frontend.blit(Frontend.cross, crossRect)
+
 
 class Ship:
+    animationStage = 0 # 0 - 2
+    animationDirection = True
     def __init__(self, pos: list, size, horizontal, hitted=None):
         self.pos: list[int] = pos
         self.size: int = size
@@ -365,23 +362,15 @@ class Ship:
                 self.hitted[i] = True
                 return True
         return False
-    
+    @ classmethod
+    def advanceAnimations(cls):
+        cls.animationStage += cls.animationDirection * 2 - 1
+        if cls.animationStage == 0:
+            cls.animationDirection = True
+        elif cls.animationStage == 2:
+            cls.animationDirection = False
     def draw(self):
-        allHitted = all(self.hitted)
-        lastPos = self.realPos
-        img = Frontend.images[self.size-1 + self.horizontal*4]
-        center = img.get_rect()
-        center.center = self.realRect.center
-        Frontend.blit(img, center)
-        lastPos[0] += Constants.GRID_X_SPACING // 2
-        lastPos[1] += Constants.GRID_Y_SPACING // 2
-        # TODO: draw hitted ship parts properly
-        for hitted, (x, y) in zip(self.hitted, self.getRealSegmentCoords()):
-            if hitted:
-                pos = x + Constants.GRID_X_SPACING // 2, y + Constants.GRID_Y_SPACING // 2
-                Frontend.draw.circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
-                if allHitted:
-                    Frontend.draw.circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 8)
-                    Frontend.draw.line((0, 0, 0), lastPos, pos, 3)
-                    lastPos = pos
-            
+        img = Frontend.getFrame(self.size, self.horizontal, self.hitted, self.animationStage)
+        rect = img.get_rect()
+        rect.center = self.realRect.center
+        Frontend.blit(img, rect)

@@ -6,8 +6,10 @@ from Client import Game, Constants
 from Shared.Enums import STAGES
 
 def game():
-    pygame.fastevent.init()
     logging.basicConfig(level=logging.INFO)
+    pygame.fastevent.init()
+    pygame.time.set_timer(pygame.event.Event(pygame.USEREVENT), Constants.ANIMATION_TIMING)
+    
     game = Game.Game()
 
     clockObj = pygame.time.Clock()
@@ -15,6 +17,8 @@ def game():
         for event in pygame.fastevent.get():
             if event.type == pygame.QUIT:
                 game.newGameStage(STAGES.CLOSING)
+            elif event.type == pygame.USEREVENT:
+                game.advanceAnimations()
             elif event.type == pygame.KEYDOWN:
                 if game.gameStage in [STAGES.WON, STAGES.LOST]:
                     game.newGameStage(STAGES.CLOSING)
