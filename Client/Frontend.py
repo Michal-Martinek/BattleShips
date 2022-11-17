@@ -8,7 +8,6 @@ assert os.path.exists(graphicsDir), 'couldn\'t find the Graphics directory'
 
 # TODO: make the drawing in separate process to save performance and allow easier animations?
 # TODO: make animation for the background?
-# TODOO: somehow cache the display
 class _Frontend:
 	COLORKEY = (255, 174, 201)
 	def __init__(self):
@@ -25,6 +24,7 @@ class _Frontend:
 		}
 		self.imgs: list[dict[str, list[pygame.Surface]]] = None
 		self._loadShips()
+		self.frameCache: dict[str, pygame.Surface] = dict()
 
 	# images --------------------------------------------	
 	def _loadImage(self, dir, file):
@@ -96,13 +96,17 @@ class _Frontend:
 		return surf
 	
 	def getFrame(self, size: int, horizontal: bool, hitted: list[bool], frame: int) -> pygame.Surface:
+		cacheStr = str(size) + '-' + str(int(horizontal)) + '-' + ''.join([str(int(x)) for x in hitted]) + '-' + str(frame)
+		if cacheStr in self.frameCache:
+			return self.frameCache[cacheStr]
 		try:
-			return self._getFrameWrapper(size, horizontal, hitted, frame)
+			frame = self._getFrameWrapper(size, horizontal, hitted, frame)
 		except KeyError as e:
-			logging.error('Error in generating an animation frame for str') # TODO: when we generate str for cache, use it here
+			logging.error(f'Error in generating an animation frame for {cacheStr}')
 			print(e)
 			return self.errSurf.copy()
-	# TODO: use some sort of cache for the images
+		self.frameCache[cacheStr] = frame
+		return frame
 	def _getFrameWrapper(self, size, horizontal, hitted, frame):
 		out = self._getFrameStrings(size, horizontal, hitted)
 		if isinstance(out, tuple):
