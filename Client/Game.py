@@ -249,11 +249,15 @@ class Grid:
             self.markBlocked(ship)
     def markBlocked(self, ship):
             rect: Rect = ship.getnoShipsRect()
+            occupied: Rect = ship.getOccupiedRect()
             rect = rect.clip(Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
             for x in range(rect.x, rect.x + rect.width):
                 for y in range(rect.y, rect.y + rect.height):
                     if self.shottedMap[y][x] == SHOTS.NOT_SHOTTED:
                         self.shottedMap[y][x] = SHOTS.BLOCKED
+                    if occupied.collidepoint((x, y)):
+                        self.shottedMap[y][x] = SHOTS.HITTED_WHOLE
+
     
     def drawPlaced(self):
         Frontend.fill_backgnd()
@@ -264,7 +268,7 @@ class Grid:
             for x, col in enumerate(row):
                 if col == SHOTS.NOT_HITTED:
                     pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
-                    Frontend.draw_circle((0, 0, 128), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
     def drawFlying(self):
         if self.flyingShip.size:
             self.flyingShip.draw()
@@ -276,7 +280,7 @@ class Grid:
                 if shotted == SHOTS.HITTED:
                     Frontend.draw_circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.NOT_HITTED:
-                    Frontend.draw_circle((0, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+                    Frontend.draw_circle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
                 elif shotted == SHOTS.BLOCKED:
                     Frontend.draw_circle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
