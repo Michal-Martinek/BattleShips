@@ -1,11 +1,13 @@
 import socket, time
-from Shared import ConnectionPrimitives
-from Shared.Enums import COM
 from queue import Queue, Empty
 import threading
-import logging
+
 from dataclasses import dataclass
 import enum, typing
+
+from Shared import ConnectionPrimitives
+from Shared.Enums import COM
+from Shared.Helpers import runFuncLogged
 
 # helpers
 AnyT = typing.TypeVar('AnyT')
@@ -24,8 +26,7 @@ class Request:
     conn: socket.socket=None
     state: int=0 # 0 - waiting, 1- sent, 2 - received
 
-
-SERVER_ADDRES = ('52.157.138.183', 1250)
+SERVER_ADDRES = ('192.168.0.159', 1250)
 MAX_TIME_BETWEEN_CONNECTION_CHECKS = 23.0
 
 class Session:    
@@ -41,9 +42,9 @@ class Session:
         self.responseQueue: Queue[Request] = Queue()
         self.quitNowEvent = threading.Event()
 
-        self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
+        self.sendThread = threading.Thread(target=lambda: runFuncLogged(self.sendLoop), name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
         self.sendThread.start()
-        self.recvThread = threading.Thread(target=self.recvLoop, name='Thread-Recv', daemon=True)
+        self.recvThread = threading.Thread(target=lambda: runFuncLogged(self.recvLoop), name='Thread-Recv', daemon=True)
         self.recvThread.start()
     
     def setAlreadySent(self, comm: COM):

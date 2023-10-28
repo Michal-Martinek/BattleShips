@@ -4,9 +4,11 @@ import pygame
 import logging
 from Client import Game, Constants
 from Shared.Enums import STAGES
+from Shared.Helpers import runFuncLogged
 
 def game():
-    logging.basicConfig(level=logging.INFO)
+    if not os.path.exists('logs'): os.mkdir('logs')
+    logging.basicConfig(filename=os.path.join('logs', 'client_log.txt'), level=logging.INFO, format='[%(levelname)s] %(asctime)s %(threadName)s:%(module)s:%(funcName)s:    %(message)s')
     pygame.fastevent.init()
     pygame.time.set_timer(pygame.event.Event(pygame.USEREVENT), Constants.ANIMATION_TIMING)
     
@@ -42,6 +44,7 @@ def game():
         game.drawGame()
         clockObj.tick(Constants.FPS)
 
-
+def main():
+    runFuncLogged(game)
 if __name__ == '__main__':
-    game()
+    main()

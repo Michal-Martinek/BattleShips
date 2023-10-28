@@ -1,13 +1,14 @@
 import socket
 import logging
 import threading, queue
-import random, time
+import random, time, os
 
 from dataclasses import dataclass
 from typing import Union, Optional
 
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
+from Shared.Helpers import runFuncLogged
 
 class ConnectedPlayer:
     def __init__(self, id: int):
@@ -143,9 +144,9 @@ class Server:
         self.blockingReqs: dict[int, BlockingRequest] = {}
         self.closeEvent = threading.Event()
 
-        self.acceptThread = threading.Thread(target=self.acceptLoop, name='Thread-Accept')
+        self.acceptThread = threading.Thread(target=lambda: runFuncLogged(self.acceptLoop), name='Thread-Accept')
         self.acceptThread.start()
-        self.waitingReqsThread = threading.Thread(target=self.waitingReqsHandler, name='Thread-WaitingReqs')
+        self.waitingReqsThread = threading.Thread(target=lambda: runFuncLogged(self.waitingReqsHandler), name='Thread-WaitingReqs')
         self.waitingReqsThread.start()
     def close(self):
         self.closeEvent.set()
@@ -249,7 +250,7 @@ class Server:
         for player in list(self.players.values()):
             if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
                 if player.connected:
-                    print(f'disconnecting player {player.id} due to not receiving requests')
+                    logging.info(f'disconnecting player {player.id} due to not receiving requests')
                     self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player: ConnectedPlayer):
@@ -394,7 +395,8 @@ class Server:
 
 
 def serverMain():
-    logging.basicConfig(filename='server_log.txt', level=logging.INFO, format='[%(levelname)s] %(asctime)s %(funcName)s:    %(message)s')
+    if not os.path.exists('logs'): os.mkdir('logs')
+    logging.basicConfig(filename=os.path.join('logs', 'server_log.txt'), level=logging.INFO, format='[%(levelname)s] %(asctime)s %(threadName)s:%(module)s:%(funcName)s:    %(message)s')
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
@@ -405,10 +407,11 @@ def serverMain():
     except KeyboardInterrupt:
         print('Keyboard-Interrupt')
     else: # thread died
-        raise RuntimeError('Worker thread died')
+        print('[ERROR] Thread died')
+        print('[NOTE] Alive threads', ', '.join(map(str, threading.enumerate())))
     finally:
-        print('Alive threads', ', '.join(map(str, threading.enumerate())))
         server.close()
-
+def main():
+    runFuncLogged(serverMain)
 if __name__ == '__main__':
-    serverMain()
+    main()

@@ -4,4 +4,4 @@ build
 dist
 *.spec
 TODO.txt
-server_log.txt
+logs
