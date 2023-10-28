@@ -1,6 +1,11 @@
-import socket, random, time, logging, threading, queue
+import socket
+import logging
+import threading, queue
+import random, time
+
 from dataclasses import dataclass
 from typing import Union, Optional
+
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
 
@@ -166,7 +171,7 @@ class Server:
         if req.command == COM.CONNECT:
             player = self.newConnectedPlayer()
             self.players[player.id] = player
-            logging.info(f'connecting new player from {req.conn.getpeername()}')
+            logging.info(f'connecting new player from {req.conn.getpeername()} as {player.id}')
             req.playerId = player.id
             self._sendResponse(req, {'id': player.id})
         else:
@@ -389,7 +394,7 @@ class Server:
 
 
 def serverMain():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(filename='server_log.txt', level=logging.INFO, format='[%(levelname)s] %(asctime)s %(funcName)s:    %(message)s')
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
