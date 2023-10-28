@@ -25,7 +25,7 @@ class Request:
     state: int=0 # 0 - waiting, 1- sent, 2 - received
 
 
-SERVER_ADDRES = ('192.168.0.159', 1250)
+SERVER_ADDRES = ('52.157.138.183', 1250)
 MAX_TIME_BETWEEN_CONNECTION_CHECKS = 23.0
 
 class Session:    

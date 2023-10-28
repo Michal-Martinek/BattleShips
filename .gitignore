@@ -1,1 +1,6 @@
 __pycache__
+Random-pics
+build
+dist
+*.spec
+TODO.txt
