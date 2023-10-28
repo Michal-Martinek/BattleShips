@@ -138,6 +138,16 @@ class Server:
         self.blockingReqs: dict[int, BlockingRequest] = {}
         self.closeEvent = threading.Event()
 
+        self.acceptThread = threading.Thread(target=self.acceptLoop, name='Thread-Accept')
+        self.acceptThread.start()
+        self.waitingReqsThread = threading.Thread(target=self.waitingReqsHandler, name='Thread-WaitingReqs')
+        self.waitingReqsThread.start()
+    def close(self):
+        self.closeEvent.set()
+        self.acceptThread.join()
+        self.waitingReqsThread.join()
+        self.serverSocket.close()
+
     # errors ----------------------------
     def unknownPlayerError(self, req: Request):
         logging.warning(f'unknown player id {req.playerId}, ignoring')
@@ -383,23 +393,17 @@ def serverMain():
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
-    
-    acceptThread = threading.Thread(target=server.acceptLoop, name='Thread-Accept')
-    acceptThread.start()
-
-    waitingReqsThread = threading.Thread(target=server.waitingReqsHandler, name='Thread-WaitingReqs')
-    waitingReqsThread.start()
 
     try:
-        while acceptThread.is_alive() and waitingReqsThread.is_alive():
+        while server.acceptThread.is_alive() and server.waitingReqsThread.is_alive():
             time.sleep(3)
     except KeyboardInterrupt:
         print('Keyboard-Interrupt')
-        server.closeEvent.set()
-        acceptThread.join()
-        waitingReqsThread.join()
     else: # thread died
         raise RuntimeError('Worker thread died')
+    finally:
+        print('Alive threads', ', '.join(map(str, threading.enumerate())))
+        server.close()
 
 if __name__ == '__main__':
     serverMain()
