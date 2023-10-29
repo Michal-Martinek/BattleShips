@@ -4,17 +4,24 @@ import pygame
 import logging
 from Client import Game, Constants
 from Shared.Enums import STAGES
+from Shared.Helpers import runFuncLogged
 
 def game():
+    if not os.path.exists('logs'): os.mkdir('logs')
+    logging.basicConfig(filename=os.path.join('logs', 'client_log.txt'), level=logging.INFO, format='[%(levelname)s] %(asctime)s %(threadName)s:%(module)s:%(funcName)s:    %(message)s')
     pygame.fastevent.init()
-    logging.basicConfig(level=logging.INFO)
+    pygame.time.set_timer(pygame.event.Event(pygame.USEREVENT), Constants.ANIMATION_TIMING)
+    
     game = Game.Game()
 
     clockObj = pygame.time.Clock()
     while game.gameStage != STAGES.CLOSING or not game.session.properlyClosed:
         for event in pygame.fastevent.get():
             if event.type == pygame.QUIT:
+                logging.info('Closing due to client quit')
                 game.newGameStage(STAGES.CLOSING)
+            elif event.type == pygame.USEREVENT:
+                game.advanceAnimations()
             elif event.type == pygame.KEYDOWN:
                 if game.gameStage in [STAGES.WON, STAGES.LOST]:
                     game.newGameStage(STAGES.CLOSING)
@@ -36,8 +43,9 @@ def game():
         
         game.handleRequests()
         game.drawGame()
-        clockObj.tick(Constants.FPS)
+        if game.gameStage != STAGES.CLOSING: clockObj.tick(Constants.FPS)
 
-
+def main():
+    runFuncLogged(game)
 if __name__ == '__main__':
-    game()
+    main()

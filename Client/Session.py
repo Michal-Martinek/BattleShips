@@ -1,11 +1,13 @@
 import socket, time
-from Shared import ConnectionPrimitives
-from Shared.Enums import COM
 from queue import Queue, Empty
 import threading
-import logging
+
 from dataclasses import dataclass
 import enum, typing
+
+from Shared import ConnectionPrimitives
+from Shared.Enums import COM
+from Shared.Helpers import runFuncLogged
 
 # helpers
 AnyT = typing.TypeVar('AnyT')
@@ -22,11 +24,9 @@ class Request:
     callback: typing.Callable
     blocking: bool
     conn: socket.socket=None
-    state: int=0 # 0 - waiting, 1- sent, 2 - received
-
+    state: int=0 # 0 waiting, 1 sent, 2 received
 
 SERVER_ADDRES = ('192.168.0.159', 1250)
-MAX_TIME_BETWEEN_CONNECTION_CHECKS = 23.0
 
 class Session:    
     def __init__(self):
@@ -41,9 +41,9 @@ class Session:
         self.responseQueue: Queue[Request] = Queue()
         self.quitNowEvent = threading.Event()
 
-        self.sendThread = threading.Thread(target=self.sendLoop, name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
+        self.sendThread = threading.Thread(target=lambda: runFuncLogged(self.sendLoop), name='Thread-Send', daemon=True) # TODO: sometimes after keyboard imterrupt some thread just hangs
         self.sendThread.start()
-        self.recvThread = threading.Thread(target=self.recvLoop, name='Thread-Recv', daemon=True)
+        self.recvThread = threading.Thread(target=lambda: runFuncLogged(self.recvLoop), name='Thread-Recv', daemon=True)
         self.recvThread.start()
     
     def setAlreadySent(self, comm: COM):
@@ -173,7 +173,7 @@ class Session:
         id, recvdCommand, req.payload = ConnectionPrimitives.recv(req.conn)
         req.conn.close()
         req.state = 2
-        assert recvdCommand == req.command, 'Response should have the same command'
+        assert recvdCommand == req.command, 'Response should have the same command' # TODO handle COM.ERROR response
         assert self.id == id or req.command == COM.CONNECT, 'The received id is not my id'
     def _newServerSocket(self, req: Request):
         req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

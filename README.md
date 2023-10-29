@@ -2,7 +2,9 @@
 
 ## About
 BattleShips is my first attempt to make an online game. It is a copy of the pen and pencil game called BattleShips, in Czech known as 'Lodě'. 
-Currently it's work in progress.
+Currently it's work in progress.<br>
+This is a picture of what the game looks like right now:
+![Screenshot](Screenshot.png)
 
 ## Requirements
 You need python version 3.9 or compatible and pygame installed.

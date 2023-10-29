@@ -1,8 +1,14 @@
-import socket, random, time, logging, threading, queue
+import socket
+import logging
+import threading, queue
+import random, time, os
+
 from dataclasses import dataclass
 from typing import Union, Optional
+
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
+from Shared.Helpers import runFuncLogged
 
 class ConnectedPlayer:
     def __init__(self, id: int):
@@ -138,6 +144,16 @@ class Server:
         self.blockingReqs: dict[int, BlockingRequest] = {}
         self.closeEvent = threading.Event()
 
+        self.acceptThread = threading.Thread(target=lambda: runFuncLogged(self.acceptLoop), name='Thread-Accept')
+        self.acceptThread.start()
+        self.waitingReqsThread = threading.Thread(target=lambda: runFuncLogged(self.waitingReqsHandler), name='Thread-WaitingReqs')
+        self.waitingReqsThread.start()
+    def close(self):
+        self.closeEvent.set()
+        self.acceptThread.join()
+        self.waitingReqsThread.join()
+        self.serverSocket.close()
+
     # errors ----------------------------
     def unknownPlayerError(self, req: Request):
         logging.warning(f'unknown player id {req.playerId}, ignoring')
@@ -156,7 +172,7 @@ class Server:
         if req.command == COM.CONNECT:
             player = self.newConnectedPlayer()
             self.players[player.id] = player
-            logging.info(f'connecting new player from {req.conn.getpeername()}')
+            logging.info(f'connecting new player from {req.conn.getpeername()} as {player.id}')
             req.playerId = player.id
             self._sendResponse(req, {'id': player.id})
         else:
@@ -234,7 +250,7 @@ class Server:
         for player in list(self.players.values()):
             if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
                 if player.connected:
-                    print(f'disconnecting player {player.id} due to not receiving requests')
+                    logging.info(f'disconnecting player {player.id} due to not receiving requests')
                     self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player: ConnectedPlayer):
@@ -286,7 +302,7 @@ class Server:
         if player.inGame:
             game = self.games[player.gameId]
             game.gameStage = STAGES.PLACING
-            return self._sendResponse(req, {'paired': True})
+            return self._sendResponse(req, {'paired': True}) # TODO report opponent id
         opponent = self.findOpponent(player)
         if opponent is None:
             self.addBlockingReq(player, req, {'paired': False})
@@ -316,6 +332,7 @@ class Server:
         if gameWon:
             game.gameStage = STAGES.WON
             req.stayConnected = False
+            logging.info(f'Game {game.id} won {player.id}')
         opponent = game.getOpponent(player)
         if opponent.id in self.blockingReqs:
             blocking = self.blockingReqs[opponent.id]
@@ -354,7 +371,7 @@ class Server:
         id = self._generateNewID(self.games)
         game = Game(id, player1, player2, bothPaired)
         self.games[id] = game
-        logging.info(f'starting new game id {id}')
+        logging.info(f'starting new game id {id}, players: {player1.id}, {player2.id}')
     def _generateNewID(self, dictOfIds):
         bounds = (1000, 2**20)
         id = random.randint(*bounds)
@@ -379,27 +396,23 @@ class Server:
 
 
 def serverMain():
-    logging.basicConfig(level=logging.INFO)
+    if not os.path.exists('logs'): os.mkdir('logs')
+    logging.basicConfig(filename=os.path.join('logs', 'server_log.txt'), level=logging.INFO, format='[%(levelname)s] %(asctime)s %(threadName)s:%(module)s:%(funcName)s:    %(message)s')
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
     logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
-    
-    acceptThread = threading.Thread(target=server.acceptLoop, name='Thread-Accept')
-    acceptThread.start()
-
-    waitingReqsThread = threading.Thread(target=server.waitingReqsHandler, name='Thread-WaitingReqs')
-    waitingReqsThread.start()
 
     try:
-        while acceptThread.is_alive() and waitingReqsThread.is_alive():
+        while server.acceptThread.is_alive() and server.waitingReqsThread.is_alive():
             time.sleep(3)
     except KeyboardInterrupt:
         print('Keyboard-Interrupt')
-        server.closeEvent.set()
-        acceptThread.join()
-        waitingReqsThread.join()
     else: # thread died
-        raise RuntimeError('Worker thread died')
-
+        print('[ERROR] Thread died')
+        logging.error('Thread died, alive threads: ' + ', '.join(map(str, threading.enumerate())))
+    finally:
+        server.close()
+def main():
+    runFuncLogged(serverMain)
 if __name__ == '__main__':
-    serverMain()
+    main()
