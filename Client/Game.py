@@ -24,9 +24,11 @@ class Game:
     def connectCallback(self, res):
         self.session.id = res['id']
         self.session.connected = True
+        logging.info(f'Connected to server as {self.session.id}')
         self.newGameStage(STAGES.PAIRING)
     def pairCallback(self, res):
         if res['paired']:
+            logging.info('Paired, starting placing stage')
             self.newGameStage(STAGES.PLACING)
     def gameReadiness(self):
         assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
@@ -45,6 +47,7 @@ class Game:
         if res['started']:
             onTurn = res['on_turn'] == self.session.id
             self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
+            logging.info('Game started')
     def shootReq(self, gridPos):
         assert self.gameStage == STAGES.SHOOTING
         callback = lambda res: self.shootCallback(gridPos, res)
@@ -53,10 +56,12 @@ class Game:
         hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
         self.grid.updateHitted(gridPos, hitted, wholeShip)
         self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
+        if gameWon: logging.info('Game won')
     def gettingShotCallback(self, res):
         if res['shotted']:
             self.grid.opponentShot(res['pos'])
             self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
+            if res['lost']: logging.info('Game lost')
     
     def handleRequests(self):
         stayConnected = self.session.loadResponses()
@@ -65,6 +70,7 @@ class Game:
             if self.gameStage == STAGES.CLOSING:
                 Frontend.quit()
         elif not stayConnected:
+            logging.warning('Server commanded disconnect')
             self.newGameStage(STAGES.WON)
             self.session.quit(must=False)
         elif self.gameStage == STAGES.CONNECTING:
@@ -103,7 +109,7 @@ class Game:
                 self.shootReq(gridPos)
     def toggleGameReady(self):
         if self.grid.allShipsPlaced():
-            logging.debug('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
+            logging.info('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
             self.gameReadiness()
     # drawing --------------------------------
     def drawGame(self):

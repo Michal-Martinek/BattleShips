@@ -18,6 +18,7 @@ def game():
     while game.gameStage != STAGES.CLOSING or not game.session.properlyClosed:
         for event in pygame.fastevent.get():
             if event.type == pygame.QUIT:
+                logging.info('Closing due to client quit')
                 game.newGameStage(STAGES.CLOSING)
             elif event.type == pygame.USEREVENT:
                 game.advanceAnimations()

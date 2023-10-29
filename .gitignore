@@ -5,3 +5,4 @@ dist
 *.spec
 TODO.txt
 logs
+backups

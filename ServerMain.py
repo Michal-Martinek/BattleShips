@@ -302,7 +302,7 @@ class Server:
         if player.inGame:
             game = self.games[player.gameId]
             game.gameStage = STAGES.PLACING
-            return self._sendResponse(req, {'paired': True})
+            return self._sendResponse(req, {'paired': True}) # TODO report opponent id
         opponent = self.findOpponent(player)
         if opponent is None:
             self.addBlockingReq(player, req, {'paired': False})
@@ -370,7 +370,7 @@ class Server:
         id = self._generateNewID(self.games)
         game = Game(id, player1, player2, bothPaired)
         self.games[id] = game
-        logging.info(f'starting new game id {id}')
+        logging.info(f'starting new game id {id}, players: {player1.id}, {player2.id}')
     def _generateNewID(self, dictOfIds):
         bounds = (1000, 2**20)
         id = random.randint(*bounds)
@@ -408,7 +408,7 @@ def serverMain():
         print('Keyboard-Interrupt')
     else: # thread died
         print('[ERROR] Thread died')
-        print('[NOTE] Alive threads', ', '.join(map(str, threading.enumerate())))
+        logging.error('Thread died, alive threads: ' + ', '.join(map(str, threading.enumerate())))
     finally:
         server.close()
 def main():
