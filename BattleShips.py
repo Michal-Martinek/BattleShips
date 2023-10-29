@@ -43,7 +43,7 @@ def game():
         
         game.handleRequests()
         game.drawGame()
-        clockObj.tick(Constants.FPS)
+        if game.gameStage != STAGES.CLOSING: clockObj.tick(Constants.FPS)
 
 def main():
     runFuncLogged(game)

@@ -332,6 +332,7 @@ class Server:
         if gameWon:
             game.gameStage = STAGES.WON
             req.stayConnected = False
+            logging.info(f'Game {game.id} won {player.id}')
         opponent = game.getOpponent(player)
         if opponent.id in self.blockingReqs:
             blocking = self.blockingReqs[opponent.id]
