@@ -8,7 +8,7 @@ from typing import Union, Optional
 
 from Shared import ConnectionPrimitives
 from Shared.Enums import STAGES, COM
-from Shared.Helpers import runFuncLogged
+from Shared.Helpers import runFuncLogged, initLogging
 
 class ConnectedPlayer:
     def __init__(self, id: int):
@@ -396,11 +396,12 @@ class Server:
 
 
 def serverMain():
-    if not os.path.exists('logs'): os.mkdir('logs')
-    logging.basicConfig(filename=os.path.join('logs', 'server_log.txt'), level=logging.INFO, format='[%(levelname)s] %(asctime)s %(threadName)s:%(module)s:%(funcName)s:    %(message)s')
+    initLogging('server_log.txt')
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
-    logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
+    msg = f'server ready and listening at {ADDR[0]}:{ADDR[1]}'
+    logging.info(msg)
+    print(msg)
 
     try:
         while server.acceptThread.is_alive() and server.waitingReqsThread.is_alive():
