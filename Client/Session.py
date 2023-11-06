@@ -1,6 +1,7 @@
 import socket, time
 from queue import Queue, Empty
 import threading
+import logging
 
 from dataclasses import dataclass
 import enum, typing
@@ -173,7 +174,10 @@ class Session:
         id, recvdCommand, req.payload = ConnectionPrimitives.recv(req.conn)
         req.conn.close()
         req.state = 2
-        assert recvdCommand == req.command, 'Response should have the same command' # TODO handle COM.ERROR response
+        if recvdCommand == COM.ERROR:
+            logging.error(f'Recvd !ERROR response {req.payload}')
+            raise RuntimeError('Recvd !ERROR response')
+        assert recvdCommand == req.command, 'Response should have the same command'
         assert self.id == id or req.command == COM.CONNECT, 'The received id is not my id'
     def _newServerSocket(self, req: Request):
         req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
