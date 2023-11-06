@@ -64,7 +64,7 @@ def sendErrorResponse(req: Request, error: str, obj=None): # NOTE doesn't accept
 def asert(cond, req, msg, obj=None):
     if cond: return
     caller = inspect.getframeinfo(inspect.stack()[1][0])
-    logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: {msg}: '{obj}'")
+    logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: ID{req.playerId} {msg}: '{obj}'")
     sendErrorResponse(req, msg, obj)
     raise FailedAsertionError(msg)
 
