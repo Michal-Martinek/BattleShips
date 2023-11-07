@@ -64,9 +64,10 @@ def sendErrorResponse(req: Request, error: str, obj=None): # NOTE doesn't accept
 def asert(cond, req, msg, obj=None):
     if cond: return
     caller = inspect.getframeinfo(inspect.stack()[1][0])
-    logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: ID{req.playerId} {msg}: '{obj}'")
+    log = f"{msg}: '{obj}'" if obj is not None else msg
+    logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: ID{req.playerId} {log}")
     sendErrorResponse(req, msg, obj)
-    raise FailedAsertionError(msg)
+    raise FailedAsertionError(log)
 
 # impl classes ----------------------------------------------------------
 class Game:
@@ -156,14 +157,15 @@ class Server:
         self.blockingReqs: dict[int, BlockingRequest] = {}
         self.closeEvent = threading.Event()
 
-        self.acceptThread = threading.Thread(target=lambda: runFuncLogged(self.acceptLoop), name='Thread-Accept')
+        self.acceptThread = threading.Thread(target=lambda: runFuncLogged(self.acceptLoop), daemon=True, name='Thread-Accept')
         self.acceptThread.start()
-        self.waitingReqsThread = threading.Thread(target=lambda: runFuncLogged(self.waitingReqsHandler), name='Thread-WaitingReqs')
+        self.waitingReqsThread = threading.Thread(target=lambda: runFuncLogged(self.waitingReqsHandler), daemon=True, name='Thread-WaitingReqs')
         self.waitingReqsThread.start()
-    def close(self):
+    def close(self, closeNow=False):
         self.closeEvent.set()
-        self.acceptThread.join()
-        self.waitingReqsThread.join()
+        if not closeNow:
+            self.acceptThread.join()
+            self.waitingReqsThread.join()
         self.serverSocket.close()
 
     def unknownIdReq(self, req: Request):
@@ -216,7 +218,7 @@ class Server:
             return self.unknownIdReq(req)
         
         player = self.players[req.playerId]
-        asert(player.connected, req, 'player marked as disconnected', player.id)
+        asert(player.connected, req, 'player marked as disconnected')
         if player.id in self.blockingReqs:
             logging.debug(f'Responding with default due to another req from {player.id}')
             self.respondBlockingReq(player, useDefault=True)
@@ -250,7 +252,7 @@ class Server:
         for player in list(self.players.values()):
             if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
                 if player.connected:
-                    logging.info(f'disconnecting player {player.id} due to not receiving requests')
+                    logging.warning(f'disconnecting player {player.id} due to not receiving requests')
                     self.disconnectPlayer(player)
     
     def disconnectPlayer(self, player: ConnectedPlayer):
@@ -302,6 +304,7 @@ class Server:
     def pairPlayer(self, player: ConnectedPlayer, req: Request):
         if player.inGame:
             game = self.games[player.gameId]
+            asert(game.gameStage == STAGES.PAIRING, req, 'Unexpected game stage for !PAIR', game.id)
             game.gameStage = STAGES.PLACING
             return self._sendResponse(req, {'paired': True}) # TODO report opponent id
         opponent = self.findOpponent(player)
@@ -398,20 +401,19 @@ def serverMain():
     initLogging('server_log.txt')
     ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
     server = Server(ADDR)
-    msg = f'server ready and listening at {ADDR[0]}:{ADDR[1]}'
-    logging.info(msg)
-    print(msg)
+    logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
 
+    closeNow = False
     try:
         while server.acceptThread.is_alive() and server.waitingReqsThread.is_alive():
             time.sleep(3)
     except KeyboardInterrupt:
         print('Keyboard-Interrupt')
-    else: # thread died
-        print('[ERROR] Thread died')
+    else:
+        closeNow = True
         logging.error('Thread died, alive threads: ' + ', '.join(map(str, threading.enumerate())))
     finally:
-        server.close()
+        server.close(closeNow)
 def main():
     runFuncLogged(serverMain)
 if __name__ == '__main__':

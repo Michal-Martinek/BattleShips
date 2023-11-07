@@ -1,4 +1,5 @@
-import os, typing, logging
+import os, typing
+import logging, traceback
 import pygame
 from . import Constants
 pygame.init()
@@ -102,9 +103,8 @@ class _Frontend:
 		try:
 			frame = self._getFrameWrapper(size, horizontal, hitted, frame)
 		except KeyError as e:
-			logging.error(f'Error in generating an animation frame for {cacheStr}')
-			print(e)
-			return self.errSurf.copy()
+			logging.error(f'failed to generate animation frame for {cacheStr}: ' + traceback.format_exception(type(e), e, None)[0][:-1])
+			frame = self.errSurf.copy()
 		self.frameCache[cacheStr] = frame
 		return frame
 	def _getFrameWrapper(self, size, horizontal, hitted, frame):

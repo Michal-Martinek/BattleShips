@@ -47,7 +47,7 @@ class Game:
         if res['started']:
             onTurn = res['on_turn'] == self.session.id
             self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
-            logging.info('Game started')
+            logging.info('Shooting started')
     def shootReq(self, gridPos):
         assert self.gameStage == STAGES.SHOOTING
         callback = lambda res: self.shootCallback(gridPos, res)
