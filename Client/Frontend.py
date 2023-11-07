@@ -27,7 +27,7 @@ class _Frontend:
 		self._loadShips()
 		self.frameCache: dict[str, pygame.Surface] = dict()
 
-	# images --------------------------------------------	
+	# images --------------------------------------------
 	def _loadImage(self, dir, file):
 		try:
 			img = pygame.image.load(os.path.join(dir, file)).convert()
@@ -43,10 +43,10 @@ class _Frontend:
 		return d
 	def _loadShips(self):
 		self.imgs = [
-			self._loadFrames(os.path.join(graphicsDir, 'Ships', '1-ship'), '{option}_{n}.png', ['HA', 'HD', 'VA', 'VD'], range(1, 4)), 
-			self._loadFrames(os.path.join(graphicsDir, 'Ships', '2-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL', 'HDR', 'HDLR', 'VAB', 'VAT', 'VDB', 'VDT', 'VDTB'], range(1, 4)), 
-			self._loadFrames(os.path.join(graphicsDir, 'Ships', '3-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL_L', 'HDL_M', 'HDL_LM', 'HDR_M', 'HDR_R', 'HDR_MR', 'VAT', 'VAB', 'VDT', 'VDB_M', 'VDB_B', 'VDB_MB', 'VD_TMB'], range(1, 4)), 
-			self._loadFrames(os.path.join(graphicsDir, 'Ships', '4-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL_L', 'HDL_R', 'HDL_LR', 'HDR_L', 'HDR_R', 'HDR_LR', 'HDA', 'VAT', 'VAB', 'VDT_T', 'VDT_B', 'VDT_TB', 'VDB_T', 'VDB_B', 'VDB_TB', 'VDA'], range(1, 4)), 
+			self._loadFrames(os.path.join(graphicsDir, 'Ships', '1-ship'), '{option}_{n}.png', ['HA', 'HD', 'VA', 'VD'], range(1, 4)),
+			self._loadFrames(os.path.join(graphicsDir, 'Ships', '2-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL', 'HDR', 'HDLR', 'VAB', 'VAT', 'VDB', 'VDT', 'VDTB'], range(1, 4)),
+			self._loadFrames(os.path.join(graphicsDir, 'Ships', '3-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL_L', 'HDL_M', 'HDL_LM', 'HDR_M', 'HDR_R', 'HDR_MR', 'VAT', 'VAB', 'VDT', 'VDB_M', 'VDB_B', 'VDB_MB', 'VD_TMB'], range(1, 4)),
+			self._loadFrames(os.path.join(graphicsDir, 'Ships', '4-ship'), '{option}_{n}.png', ['HAL', 'HAR', 'HDL_L', 'HDL_R', 'HDL_LR', 'HDR_L', 'HDR_R', 'HDR_LR', 'HDA', 'VAT', 'VAB', 'VDT_T', 'VDT_B', 'VDT_TB', 'VDB_T', 'VDB_B', 'VDB_TB', 'VDA'], range(1, 4)),
 		]
 	def _getFrameStrings(self, size, horizontal, hitted) -> tuple[list[str], tuple[int]]:
 		hor = 'H' if horizontal else 'V'
