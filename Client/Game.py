@@ -8,16 +8,23 @@ from Shared.Enums import SHOTS, STAGES, COM
 class Game:
 	def __init__(self):
 		self.session = Session()
+		self.repeatableInit()
+		self.drawStatic()
+	def repeatableInit(self):
 		self.grid = Grid()
-		self.gameStage: STAGES = STAGES.CONNECTING
+		self.gameStage: STAGES = STAGES.MAIN_MENU
 	def newGameStage(self, stage: STAGES):
+		assert STAGES.COUNT == 11
 		assert stage != self.gameStage
 		self.gameStage = stage
-		if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
+		if self.gameStage == STAGES.MAIN_MENU:
+			self.repeatableInit()
+		elif self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
 			self.session.disconnect()
 		elif self.gameStage == STAGES.PLACING and '--autoplace' in sys.argv:
 			self.grid.autoplace()
 			self.toggleGameReady()
+		logging.debug(f'New game stage: {str(stage)}')
 		self.drawStatic()
 
 	# requests -------------------------------------------------
@@ -64,15 +71,17 @@ class Game:
 			if res['lost']: logging.info('Game lost')
 
 	def handleRequests(self):
+		assert STAGES.COUNT == 11
 		stayConnected = self.session.loadResponses()
-		if self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING]:
-			self.session.quit(must=(self.gameStage == STAGES.CLOSING))
-			if self.gameStage == STAGES.CLOSING:
-				Frontend.quit()
+		if self.gameStage in [STAGES.MAIN_MENU, STAGES.WON, STAGES.LOST]:
+			return
+		elif self.gameStage == STAGES.CLOSING:
+			self.session.quit(must=True)
+			Frontend.quit()
 		elif not stayConnected:
 			logging.warning('Server commanded disconnect')
 			self.newGameStage(STAGES.WON)
-			self.session.quit(must=False)
+		
 		elif self.gameStage == STAGES.CONNECTING:
 			self.session.tryToSend(COM.CONNECT, {}, self.connectCallback, blocking=False)
 		elif self.gameStage == STAGES.PAIRING:
@@ -113,6 +122,7 @@ class Game:
 			self.gameReadiness()
 	# drawing --------------------------------
 	def drawGame(self):
+		assert STAGES.COUNT == 11
 		if self.gameStage == STAGES.PLACING:
 			self.grid.drawPlaced()
 			self.grid.drawFlying()
@@ -125,8 +135,12 @@ class Game:
 			return
 		Frontend.update()
 	def drawStatic(self):
+		assert STAGES.COUNT == 11
 		Frontend.fill_color((255, 255, 255))
-		if self.gameStage == STAGES.PAIRING:
+		if self.gameStage == STAGES.MAIN_MENU:
+			Frontend.render('ArialBig', (150, 300), 'MAIN MENU', (0, 0, 0))
+			Frontend.render('ArialSmall', (150, 400), 'Press any key to play...', (0, 0, 0))
+		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...', (0, 0, 0))
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.drawPlaced()

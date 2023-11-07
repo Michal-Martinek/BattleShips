@@ -31,11 +31,8 @@ SERVER_ADDRES = ('192.168.0.159', 1250)
 
 class Session:
 	def __init__(self):
-		self.id: int = 0
-		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
-		self.lastReqTime = 0.0
-		self.connected = False
 		self.properlyClosed = False
+		self.repeatebleInit()
 
 		self.reqQueue: Queue[Request] = Queue()
 		self.requestsToRecv: Queue[Request] = Queue()
@@ -46,12 +43,16 @@ class Session:
 		self.sendThread.start()
 		self.recvThread = threading.Thread(target=lambda: runFuncLogged(self.recvLoop), name='Thread-Recv', daemon=True)
 		self.recvThread.start()
+	def repeatebleInit(self):
+		self.id: int = 0
+		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
+		self.connected = False # NOTE session is disconnected while not in game
 
 	def setAlreadySent(self, comm: COM):
 		assert not self.alreadySent[comm]
 		self.alreadySent[comm] = True
 	def resetAlreadySent(self, comm: COM):
-		assert self.alreadySent[comm]
+		assert self.alreadySent[comm] or comm == COM.DISCONNECT
 		self.alreadySent[comm] = False
 	def noPendingReqs(self):
 		return not any(self.alreadySent.values())
@@ -83,7 +84,6 @@ class Session:
 		assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'
 		assert self.connected or command == COM.CONNECT, 'the session is not conected'
 		assert self.id != 0 or command == COM.CONNECT, 'self.id is invalid for sending this request'
-		self.lastReqTime = time.time()
 		self.reqQueue.put(Request(command, payload, callback, blocking))
 	# checks and closing -----------------------
 	def spawnConnectionCheck(self):
@@ -91,7 +91,7 @@ class Session:
 			self.tryToSend(COM.CONNECTION_CHECK, {}, lambda res: None, blocking=True)
 	def disconnect(self):
 		assert self.connected
-		self.tryToSend(COM.DISCONNECT, {}, lambda res: None, blocking=False, mustSend=True)
+		self.tryToSend(COM.DISCONNECT, {}, lambda res: self.repeatebleInit(), blocking=False, mustSend=True)
 		self.connected = False
 	def _awaitNoPendingReqs(self):
 		'''drains all responses untill there are no pending requests'''

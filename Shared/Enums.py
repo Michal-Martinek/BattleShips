@@ -1,6 +1,7 @@
 from enum import Enum, IntEnum, auto
 
 class STAGES(IntEnum):
+	MAIN_MENU = auto()
 	CONNECTING = auto()
 	PAIRING = auto()
 	PLACING = auto()
@@ -10,6 +11,8 @@ class STAGES(IntEnum):
 	WON = auto()
 	LOST = auto()
 	CLOSING = auto()
+
+	COUNT = auto()
 
 class SHOTS(IntEnum):
 	NOT_SHOTTED = auto()

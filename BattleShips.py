@@ -22,8 +22,10 @@ def game():
 			elif event.type == pygame.USEREVENT:
 				game.advanceAnimations()
 			elif event.type == pygame.KEYDOWN:
-				if game.gameStage in [STAGES.WON, STAGES.LOST]:
-					game.newGameStage(STAGES.CLOSING)
+				if game.gameStage == STAGES.MAIN_MENU:
+					game.newGameStage(STAGES.CONNECTING)
+				elif game.gameStage in [STAGES.WON, STAGES.LOST]:
+					game.newGameStage(STAGES.MAIN_MENU)
 				elif event.key == pygame.K_r:
 					game.rotateShip()
 				elif event.key == pygame.K_q:
