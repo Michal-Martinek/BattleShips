@@ -1,6 +1,4 @@
-import logging, sys
-from dataclasses import dataclass
-
+import logging, sys, string
 from pygame import Rect, mouse
 import pygame
 from . import Constants
@@ -108,12 +106,25 @@ class Game:
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeCursor(mouse.get_pos())
 	def mouseClick(self, mousePos, rightClick):
-		if self.gameStage == STAGES.PLACING:
+		if self.gameStage == STAGES.MULTIPLAYER_MENU and not rightClick:
+			if self.options.mouseClick(mousePos): self.drawStatic()
+		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed:
 				self.toggleGameReady()
 		elif self.gameStage == STAGES.SHOOTING and not rightClick:
 			self.shoot(mousePos)
+	def keydownInMenu(self, event):
+		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+			if self.options.inputActive: self.options.inputActive = False
+			else: self.newGameStage(STAGES.MULTIPLAYER_MENU if self.gameStage == STAGES.MAIN_MENU else STAGES.CONNECTING)
+		elif event.key in [pygame.K_LEFT, pygame.K_RIGHT]:
+			self.options.moveCursor([-1, 1][event.key == pygame.K_RIGHT])
+		elif event.key in [pygame.K_BACKSPACE, pygame.K_DELETE]:
+			self.options.removeChar(event.key == pygame.K_DELETE)
+		else:
+			self.options.addChar(event.unicode)
+		self.drawStatic()
 	def changeShipSize(self, increment: int):
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeSize(increment)
@@ -147,12 +158,12 @@ class Game:
 		Frontend.fill_color((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
 			Frontend.render('ArialBig', (150, 300), 'MAIN MENU')
-			Frontend.render('ArialSmall', (150, 400), 'Press any key to play multiplayer')
+			Frontend.render('ArialSmall', (150, 400), 'Press ENTER to play multiplayer')
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
 			Frontend.render('ArialBig', (150, 150), 'MULTIPLAYER')
 			Frontend.render('ArialMiddle', (150, 250), 'Input your name')
-			Frontend.render('ArialMiddle', Constants.MULTIPLAYER_INPUT_BOX, self.options.playerName, (0, 0, 0), (128, 128, 128), (0, 0, 0), 3, 8)
-			Frontend.render('ArialSmall', (150, 450), 'Press any key to play...')
+			Frontend.render('ArialMiddle', Constants.MULTIPLAYER_INPUT_BOX, self.options.showedPlayerName(), (0, 0, 0), (255, 255, 255) if self.options.inputActive else (128, 128, 128), (0, 0, 0), 3, 8)
+			Frontend.render('ArialSmall', (150, 450), 'Press ENTER to play...')
 		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...')
 		elif self.gameStage == STAGES.GAME_WAIT:
@@ -165,11 +176,39 @@ class Game:
 		else: return
 		Frontend.update()
 
-@dataclass
 class Options:
 	'''Class responsible for loading, holding and storing client side options,
-		such as settings and stored values'''
-	playerName: str='Noname'
+		such as settings and stored data'''
+	MAX_LEN = 20
+	def __init__(self):
+		self.playerName: list[str] = []
+		self.cursor:int = 0 # points before char
+		self.inputActive = False
+	def addChar(self, c):
+		if c == ' ': c = '_'
+		if c and (c in string.ascii_letters or c in string.digits or c in '!#*+-_'):
+			if self.inputActive:
+				if len(self.playerName) < Options.MAX_LEN:
+					self.playerName.insert(self.cursor, c)
+					self.cursor += 1
+	def removeChar(self, delAfter=False):
+		if (self.cursor <= 0 and not delAfter) or (self.cursor == len(self.playerName) and delAfter): return
+		if self.inputActive and len(self.playerName):
+			if not delAfter: self.cursor -= 1
+			self.playerName.pop(self.cursor)
+	def moveCursor(self, off):
+		if 0 <= self.cursor + off <= len(self.playerName):
+			self.cursor += off
+	def mouseClick(self, mousePos) -> bool:
+		if Constants.MULTIPLAYER_INPUT_BOX.collidepoint(mousePos) ^ self.inputActive:
+			self.inputActive ^= True
+			self.cursor = len(self.playerName)
+			return True
+	def showedPlayerName(self) -> str:
+		if not self.playerName and not self.inputActive: return 'Name'
+		s = ''.join(self.playerName)
+		if self.inputActive: s = s[:self.cursor] + '|' + s[self.cursor:]
+		return s
 
 class Grid:
 	def __init__(self):
