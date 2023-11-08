@@ -1,5 +1,6 @@
 import logging, sys
 from pygame import Rect, mouse
+import pygame
 from . import Constants
 from .Frontend import Frontend
 from .Session import Session
@@ -10,6 +11,8 @@ class Game:
 		self.session = Session()
 		self.repeatableInit()
 		self.drawStatic()
+		if '--autoplay' in sys.argv:
+			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self):
 		self.grid = Grid()
 		self.gameStage: STAGES = STAGES.MAIN_MENU
@@ -21,6 +24,8 @@ class Game:
 			self.repeatableInit()
 		elif self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
 			self.session.disconnect()
+			if self.gameStage != STAGES.CLOSING and '--autoplay' in sys.argv:
+				pygame.time.set_timer(pygame.QUIT, 1000, 1)
 		elif self.gameStage == STAGES.PLACING and '--autoplace' in sys.argv:
 			self.grid.autoplace()
 			self.toggleGameReady()
@@ -149,6 +154,7 @@ class Game:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
 			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit', (0, 0, 0))
+		else: return
 		Frontend.update()
 
 class Grid:

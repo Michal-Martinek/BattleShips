@@ -52,7 +52,6 @@ class Session:
 		assert not self.alreadySent[comm]
 		self.alreadySent[comm] = True
 	def resetAlreadySent(self, comm: COM):
-		assert self.alreadySent[comm] or comm == COM.DISCONNECT
 		self.alreadySent[comm] = False
 	def noPendingReqs(self):
 		return not any(self.alreadySent.values())
@@ -97,7 +96,7 @@ class Session:
 		'''drains all responses untill there are no pending requests'''
 		while not self.noPendingReqs():
 			self.loadResponses(_drain=True)
-	def quit(self, must=False):
+	def quit(self, must=False): # TODO only one usecase now
 		'''tries to close session, if 'must' it blocks untill closed
 		  if it gets to actually closing, the disconnect must have been sent in advance'''
 		if not self.properlyClosed:
