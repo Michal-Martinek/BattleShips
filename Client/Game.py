@@ -17,7 +17,7 @@ class Game:
 		self.grid = Grid()
 		self.gameStage: STAGES = STAGES.MAIN_MENU
 	def newGameStage(self, stage: STAGES):
-		assert STAGES.COUNT == 11
+		assert STAGES.COUNT == 12
 		assert stage != self.gameStage
 		self.gameStage = stage
 		if self.gameStage == STAGES.MAIN_MENU:
@@ -76,9 +76,9 @@ class Game:
 			if res['lost']: logging.info('Game lost')
 
 	def handleRequests(self):
-		assert STAGES.COUNT == 11
+		assert STAGES.COUNT == 12
 		stayConnected = self.session.loadResponses()
-		if self.gameStage in [STAGES.MAIN_MENU, STAGES.WON, STAGES.LOST]:
+		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.WON, STAGES.LOST]:
 			return
 		elif self.gameStage == STAGES.CLOSING:
 			self.session.quit(must=True)
@@ -127,7 +127,7 @@ class Game:
 			self.gameReadiness()
 	# drawing --------------------------------
 	def drawGame(self):
-		assert STAGES.COUNT == 11
+		assert STAGES.COUNT == 12
 		if self.gameStage == STAGES.PLACING:
 			self.grid.drawPlaced()
 			self.grid.drawFlying()
@@ -140,10 +140,13 @@ class Game:
 			return
 		Frontend.update()
 	def drawStatic(self):
-		assert STAGES.COUNT == 11
+		assert STAGES.COUNT == 12
 		Frontend.fill_color((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
 			Frontend.render('ArialBig', (150, 300), 'MAIN MENU', (0, 0, 0))
+			Frontend.render('ArialSmall', (150, 400), 'Press any key to play multiplayer', (0, 0, 0))
+		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
+			Frontend.render('ArialBig', (150, 300), 'MULTIPLAYER', (0, 0, 0))
 			Frontend.render('ArialSmall', (150, 400), 'Press any key to play...', (0, 0, 0))
 		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...', (0, 0, 0))

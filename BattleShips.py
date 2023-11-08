@@ -22,7 +22,10 @@ def game():
 			elif event.type == pygame.USEREVENT:
 				game.advanceAnimations()
 			elif event.type == pygame.KEYDOWN:
+				assert STAGES.COUNT == 12
 				if game.gameStage == STAGES.MAIN_MENU:
+					game.newGameStage(STAGES.MULTIPLAYER_MENU)
+				elif game.gameStage == STAGES.MULTIPLAYER_MENU:
 					game.newGameStage(STAGES.CONNECTING)
 				elif game.gameStage in [STAGES.WON, STAGES.LOST]:
 					game.newGameStage(STAGES.MAIN_MENU)

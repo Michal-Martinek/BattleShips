@@ -2,6 +2,7 @@ from enum import Enum, IntEnum, auto
 
 class STAGES(IntEnum):
 	MAIN_MENU = auto()
+	MULTIPLAYER_MENU = auto()
 	CONNECTING = auto()
 	PAIRING = auto()
 	PLACING = auto()
