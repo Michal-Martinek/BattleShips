@@ -1,4 +1,6 @@
 import logging, sys
+from dataclasses import dataclass
+
 from pygame import Rect, mouse
 import pygame
 from . import Constants
@@ -9,6 +11,7 @@ from Shared.Enums import SHOTS, STAGES, COM
 class Game:
 	def __init__(self):
 		self.session = Session()
+		self.options = Options()
 		self.repeatableInit()
 		self.drawStatic()
 		if '--autoplay' in sys.argv:
@@ -143,22 +146,30 @@ class Game:
 		assert STAGES.COUNT == 12
 		Frontend.fill_color((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
-			Frontend.render('ArialBig', (150, 300), 'MAIN MENU', (0, 0, 0))
-			Frontend.render('ArialSmall', (150, 400), 'Press any key to play multiplayer', (0, 0, 0))
+			Frontend.render('ArialBig', (150, 300), 'MAIN MENU')
+			Frontend.render('ArialSmall', (150, 400), 'Press any key to play multiplayer')
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
-			Frontend.render('ArialBig', (150, 300), 'MULTIPLAYER', (0, 0, 0))
-			Frontend.render('ArialSmall', (150, 400), 'Press any key to play...', (0, 0, 0))
+			Frontend.render('ArialBig', (150, 150), 'MULTIPLAYER')
+			Frontend.render('ArialMiddle', (150, 250), 'Input your name')
+			Frontend.render('ArialMiddle', Constants.MULTIPLAYER_INPUT_BOX, self.options.playerName, (0, 0, 0), (128, 128, 128), (0, 0, 0), 3, 8)
+			Frontend.render('ArialSmall', (150, 450), 'Press any key to play...')
 		elif self.gameStage == STAGES.PAIRING:
-			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...', (0, 0, 0))
+			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...')
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.drawPlaced()
-			Frontend.render('ArialMiddle', (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), 1, (255, 255, 255), 5, (0, 0, 0), 2)
+			Frontend.render('ArialMiddle', (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
 		elif self.gameStage in [STAGES.WON, STAGES.LOST]:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
-			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit', (0, 0, 0))
+			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit')
 		else: return
 		Frontend.update()
+
+@dataclass
+class Options:
+	'''Class responsible for loading, holding and storing client side options,
+		such as settings and stored values'''
+	playerName: str='Noname'
 
 class Grid:
 	def __init__(self):

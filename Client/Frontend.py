@@ -119,29 +119,47 @@ class _Frontend:
 			return self._mergeImgs(self.imgs[size-1][strs[0]][frame], self.imgs[size-1][strs[1]][frame], horizontal, offsets)
 		return self.errSurf.copy()
 
+	@staticmethod
+	def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding) -> tuple[pygame.Rect, pygame.Rect]:
+		'''@return: box rect (unpadded), label blit loc, blit area on the label'''
+		if isinstance(rect, pygame.Rect) or (isinstance(rect, tuple) and len(rect) == 4):
+			rect = pygame.Rect(rect)
+			rect.inflate_ip(-2*boundaryPadding, -2*boundaryPadding)
+			labelRect = pygame.Rect(0, 0, min(labelDims.w, rect.w), min(labelDims.h, rect.h))
+			labelRect.center = rect.center
+			labelArea = labelRect.copy()
+			labelArea.bottomright = labelDims.bottomright
+			return rect, labelRect, labelArea
+		rect = pygame.Rect(*rect, *labelDims.bottomright)
+		return rect, rect.copy(), labelDims
 	# interface ----------------------
-	def blit(self, surf: pygame.Surface, pos: list[int]):
-		self.display.blit(surf, pos)
+	def blit(self, surf: pygame.Surface, pos: list[int], area: pygame.Rect=None):
+		self.display.blit(surf, pos, area)
 	def fill_color(self, color):
 		self.display.fill(color)
 	def fill_backgnd(self):
 		self.display.blit(self.background, (0, 0))
-	def render(self, font:str, pos, text: str, color, antialias=True, backgroundColor=None, boundarySize=0, boundaryColor=None, boundaryPadding=-1):
-		label = self.fonts[font].render(text, antialias, color, backgroundColor)
-		self.blit(label, pos)
-		if boundarySize:
-			dims = label.get_rect()
-			dims.topleft = pos[0] - boundaryPadding, pos[1] - boundaryPadding
-			dims.width += 2 * boundaryPadding
-			dims.height += 2 * boundaryPadding
-			self.draw_rect(boundaryColor, dims, boundarySize)
+	def render(self, font:str, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **rectKwargs):
+		'''
+		Draws text, optionally inside rect
+		@rect: (x, y) -> topleft of text
+			(x, y, w, h) -> text centered in rect, if it doesn't fit show the bottom right
+		@boundaryPadding: padding between boundary and text, rect size does not change
+		'''
+		label = self.fonts[font].render(text, True, textColor)
+		boxRect, labelRect, labelArea = self._convertRect(rect, label.get_rect(), boundaryPadding)
+		self.draw_rect(boxRect, backgroundColor, boundaryColor, boundaryWidth, boundaryPadding, **rectKwargs)
+		self.blit(label, labelRect, labelArea)
+
 	def update(self):
 		pygame.display.update()
 	def quit(self):
 		pygame.quit()
 
-	def draw_rect(self, color, rect, width=0):
-		pygame.draw.rect(self.display, color, rect, width)
+	def draw_rect(self, rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **kwargs):
+		rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
+		if backgroundColor: pygame.draw.rect(self.display, backgroundColor, rect, **kwargs)
+		if boundaryColor: pygame.draw.rect(self.display, boundaryColor, rect, boundaryWidth, **kwargs)
 	def draw_circle(self, color, pos, size):
 		pygame.draw.circle(self.display, color, pos, size)
 	def draw_line(self, color, start, end, width):
