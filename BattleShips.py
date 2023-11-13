@@ -47,7 +47,7 @@ def game():
 				if event.button == 1:
 					Frontend.windowGrabbedPos = None
 			elif event.type == pygame.MOUSEMOTION:
-				Frontend.moveWindow(event.pos)
+				game.mouseMovement(event)
 
 		game.handleRequests()
 		game.drawGame()

@@ -115,6 +115,10 @@ class Game:
 				self.toggleGameReady()
 		elif self.gameStage == STAGES.SHOOTING and not rightClick:
 			self.shoot(mousePos)
+	def mouseMovement(self, event):
+		if Frontend.moveWindow(event.pos): return
+		elif Frontend.headerCloseActive ^ Constants.HEADER_CLOSE_RECT.collidepoint(event.pos):
+			self.drawStatic()
 	def keydownInMenu(self, event):
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
 			if self.options.inputActive: self.options.inputActive = False
@@ -153,6 +157,7 @@ class Game:
 			self.grid.drawMineNotHitted()
 		else:
 			return
+		Frontend.draw_header()
 		Frontend.update()
 	def drawStatic(self):
 		assert STAGES.COUNT == 12
@@ -175,6 +180,7 @@ class Game:
 			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
 			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit')
 		else: return
+		Frontend.draw_header()
 		Frontend.update()
 
 class Options:
@@ -314,7 +320,7 @@ class Grid:
 		self.mineNotHitted[pos[1]][pos[0]] = SHOTS.NOT_HITTED
 		return False
 	def shoot(self, mousePos):
-		clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, mousePos[1] // Constants.GRID_Y_SPACING
+		clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, (mousePos[1] - Constants.HEADER_HEIGHT) // Constants.GRID_Y_SPACING
 		if self.shottedMap[clickedY][clickedX] != SHOTS.NOT_SHOTTED:
 			return False
 		self.shottedMap[clickedY][clickedX] = SHOTS.SHOTTED_UNKNOWN
@@ -347,7 +353,7 @@ class Grid:
 		for y, row in enumerate(self.mineNotHitted):
 			for x, col in enumerate(row):
 				if col == SHOTS.NOT_HITTED:
-					pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+					pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.HEADER_HEIGHT)
 					Frontend.draw_circle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
 	def drawFlying(self):
 		if self.flyingShip.size:
@@ -356,7 +362,7 @@ class Grid:
 		Frontend.fill_backgnd()
 		for y, lineShotted in enumerate(self.shottedMap):
 			for x, shotted in enumerate(lineShotted):
-				pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2)
+				pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.HEADER_HEIGHT)
 				if shotted == SHOTS.HITTED:
 					Frontend.draw_circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
 				elif shotted == SHOTS.NOT_HITTED:
@@ -407,15 +413,16 @@ class Ship:
 		return (self.size - 1) * (not self.horizontal) + 1
 	@ property
 	def realPos(self) -> list[int]:
+		'''return real pos wrt grid'''
 		if self.pos == [-1, -1]:
 			mouseX, mouseY = mouse.get_pos()
-			return [mouseX - self.widthInGrid * Constants.GRID_X_SPACING // 2, mouseY - self.heightInGrid * Constants.GRID_Y_SPACING // 2]
+			return [mouseX - self.widthInGrid * Constants.GRID_X_SPACING // 2, mouseY - Constants.HEADER_HEIGHT - self.heightInGrid * Constants.GRID_Y_SPACING // 2]
 		else:
 			return [self.pos[0] * Constants.GRID_X_SPACING, self.pos[1] * Constants.GRID_Y_SPACING]
 	@ property
 	def realRect(self):
-		'''Rect of real ship coordinates'''
-		return Rect(*self.realPos, self.widthInGrid * Constants.GRID_X_SPACING, self.heightInGrid * Constants.GRID_Y_SPACING)
+		'''Rect of window ship coordinates'''
+		return Rect(self.realPos[0], self.realPos[1] + Constants.HEADER_HEIGHT, self.widthInGrid * Constants.GRID_X_SPACING, self.heightInGrid * Constants.GRID_Y_SPACING)
 
 	def getRealSegmentCoords(self):
 		'''returns list of real coords of all ship segments'''

@@ -13,10 +13,12 @@ assert os.path.exists(graphicsDir), 'couldn\'t find the Graphics directory'
 class _Frontend:
 	COLORKEY = (255, 174, 201)
 	def __init__(self):
-		self.display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
+		self.display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
 		self.SDLwindow = Window.from_display_module()
 		self.windowGrabbedPos: list[int, int] = None
-		self.background = self._genBackground()
+		self.headerCloseActive = False
+		
+		self.headerCross = self._loadImage(graphicsDir, 'header_close.png')
 		self.errSurf = pygame.Surface((30, 30))
 		self.errSurf.fill((255, 0, 0))
 		pygame.draw.rect(self.errSurf, (118, 205, 226), (5, 4, 25, 8))
@@ -29,6 +31,9 @@ class _Frontend:
 		self.imgs: list[dict[str, list[pygame.Surface]]] = None
 		self._loadShips()
 		self.frameCache: dict[str, pygame.Surface] = dict()
+
+		self.header = self._genHeader()
+		self.background = self._genBackground()
 
 	# images --------------------------------------------
 	def _loadImage(self, dir, file):
@@ -88,9 +93,25 @@ class _Frontend:
 			s.blit(surf2, (max(0, verticalOffsets[0] - verticalOffsets[1]), surf1.get_height() - verticalOffsets[2]))
 			s.set_colorkey(self.COLORKEY)
 			return s
+	def _blitPositioned(self, surf, rectAttr, rectVal, img):
+		if not isinstance(img, pygame.Surface):
+			img = self._loadImage(graphicsDir, img)
+		rect = img.get_rect()
+		setattr(rect, rectAttr, rectVal)
+		surf.blit(img, rect)
+	def _genHeader(self) -> pygame.Surface:
+		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.HEADER_HEIGHT))
+		surf.fill((40, 40, 40))
+		pygame.draw.line(surf, (255, 255, 255), (0, 0), (Constants.SCREEN_WIDTH, 0))
+		pygame.draw.line(surf, (255, 255, 255), (0, Constants.HEADER_HEIGHT-1), (Constants.SCREEN_WIDTH, Constants.HEADER_HEIGHT-1))
+		pygame.draw.line(surf, (255, 255, 255), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT))
+		surf.blit(self._loadImage(graphicsDir, 'BattleShips.ico'), (0, 0))
+		label = pygame.font.SysFont('arial', 17).render('Battleships', False, (255, 255, 255))
+		self._blitPositioned(surf, 'midleft', Constants.HEADER_NAME_POS, label)
+		return surf
 	def _genBackground(self) -> pygame.Surface:
 		cross = self._loadImage(graphicsDir, 'grid-cross.png')
-		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
+		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT - Constants.HEADER_HEIGHT))
 		surf.fill((0, 0, 255))
 		for y in range(Constants.GRID_HEIGHT):
 			for x in range(Constants.GRID_WIDTH):
@@ -140,8 +161,14 @@ class _Frontend:
 		self.display.blit(surf, pos, area)
 	def fill_color(self, color):
 		self.display.fill(color)
+	def draw_header(self):
+		self.display.blit(self.header, (0, 0))
+		self.headerCloseActive = Constants.HEADER_CLOSE_RECT.collidepoint(pygame.mouse.get_pos())
+		if self.headerCloseActive:
+			pygame.draw.rect(self.display, (255, 0, 0), Constants.HEADER_CLOSE_RECT)
+		self.display.blit(self.headerCross, Constants.HEADER_CLOSE_RECT)
 	def fill_backgnd(self):
-		self.display.blit(self.background, (0, 0))
+		self.display.blit(self.background, (0, Constants.HEADER_HEIGHT))
 	def render(self, font:str, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **rectKwargs):
 		'''
 		Draws text, optionally inside rect
@@ -159,13 +186,13 @@ class _Frontend:
 	def quit(self):
 		pygame.quit()
 	def grabWindow(self, mousePos):
-		if mousePos[1] <= Constants.WINDOW_HEADER_HEIGHT:
+		if mousePos[1] <= Constants.HEADER_HEIGHT:
 			self.windowGrabbedPos = list(mousePos)
 			return True
 	def moveWindow(self, mousePos):
 		if self.windowGrabbedPos:
 			self.SDLwindow.position = self.SDLwindow.position[0] - self.windowGrabbedPos[0] + mousePos[0], self.SDLwindow.position[1] - self.windowGrabbedPos[1] + mousePos[1]
-
+			return True
 	def draw_rect(self, rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **kwargs):
 		if isinstance(rect, tuple): rect = pygame.Rect(*rect)
 		rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
