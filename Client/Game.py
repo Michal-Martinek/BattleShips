@@ -106,7 +106,8 @@ class Game:
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeCursor(mouse.get_pos())
 	def mouseClick(self, mousePos, rightClick):
-		if self.gameStage == STAGES.MULTIPLAYER_MENU and not rightClick:
+		if not rightClick and Frontend.grabWindow(mousePos): return
+		elif self.gameStage == STAGES.MULTIPLAYER_MENU and not rightClick:
 			if self.options.mouseClick(mousePos): self.drawStatic()
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)

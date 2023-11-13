@@ -5,6 +5,7 @@ import logging
 from Client import Game, Constants
 from Shared.Enums import STAGES
 from Shared.Helpers import runFuncLogged, initLogging
+from Client.Frontend import Frontend
 
 def game():
 	initLogging('client_log.txt')
@@ -42,6 +43,11 @@ def game():
 					game.changeShipSize(+1)
 				elif event.button == 5: # scroll down
 					game.changeShipSize(-1)
+			elif event.type == pygame.MOUSEBUTTONUP:
+				if event.button == 1:
+					Frontend.windowGrabbedPos = None
+			elif event.type == pygame.MOUSEMOTION:
+				Frontend.moveWindow(event.pos)
 
 		game.handleRequests()
 		game.drawGame()

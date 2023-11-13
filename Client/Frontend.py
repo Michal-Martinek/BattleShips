@@ -3,6 +3,7 @@ import logging, traceback
 import pygame
 from . import Constants
 pygame.init()
+from pygame._sdl2 import Window
 
 graphicsDir = os.path.join('Client', 'Graphics')
 assert os.path.exists(graphicsDir), 'couldn\'t find the Graphics directory'
@@ -13,6 +14,8 @@ class _Frontend:
 	COLORKEY = (255, 174, 201)
 	def __init__(self):
 		self.display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
+		self.SDLwindow = Window.from_display_module()
+		self.windowGrabbedPos: list[int, int] = None
 		self.background = self._genBackground()
 		self.errSurf = pygame.Surface((30, 30))
 		self.errSurf.fill((255, 0, 0))
@@ -89,10 +92,10 @@ class _Frontend:
 		cross = self._loadImage(graphicsDir, 'grid-cross.png')
 		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT))
 		surf.fill((0, 0, 255))
-		for row in range(0, Constants.SCREEN_HEIGHT, Constants.GRID_Y_SPACING):
-			for col in range(0, Constants.SCREEN_WIDTH, Constants.GRID_X_SPACING):
+		for y in range(Constants.GRID_HEIGHT):
+			for x in range(Constants.GRID_WIDTH):
 				crossRect = cross.get_rect()
-				crossRect.center = (col - crossRect.width // 2, row - crossRect.height // 2)
+				crossRect.center = (x * Constants.GRID_X_SPACING - crossRect.width // 2, y * Constants.GRID_Y_SPACING - crossRect.height // 2)
 				surf.blit(cross, crossRect)
 		return surf
 	
@@ -155,8 +158,16 @@ class _Frontend:
 		pygame.display.update()
 	def quit(self):
 		pygame.quit()
+	def grabWindow(self, mousePos):
+		if mousePos[1] <= Constants.WINDOW_HEADER_HEIGHT:
+			self.windowGrabbedPos = list(mousePos)
+			return True
+	def moveWindow(self, mousePos):
+		if self.windowGrabbedPos:
+			self.SDLwindow.position = self.SDLwindow.position[0] - self.windowGrabbedPos[0] + mousePos[0], self.SDLwindow.position[1] - self.windowGrabbedPos[1] + mousePos[1]
 
 	def draw_rect(self, rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **kwargs):
+		if isinstance(rect, tuple): rect = pygame.Rect(*rect)
 		rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
 		if backgroundColor: pygame.draw.rect(self.display, backgroundColor, rect, **kwargs)
 		if boundaryColor: pygame.draw.rect(self.display, boundaryColor, rect, boundaryWidth, **kwargs)
