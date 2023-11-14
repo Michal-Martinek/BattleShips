@@ -18,6 +18,8 @@ def runFuncLogged(func):
 		func()
 	except Exception as e: # NOTE does not catch KeyboardInterrupt
 		strs = traceback.format_exception(type(e), e, e.__traceback__)
-		strs = 'UNCATCHED ' + strs[-1] + ''.join(['	' + s for s in strs[:-1]])
+		err = strs[-1]
+		strs = 'UNCATCHED ' + err + ''.join(['	' + s for s in strs[:-1]])
 		logging.critical(strs)
+		print(err, end='')
 		raise SystemExit()

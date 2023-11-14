@@ -12,7 +12,7 @@ class Game:
 		self.options = Options()
 		self.repeatableInit()
 		self.drawStatic()
-		if '--autoplay' in sys.argv:
+		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
 			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self):
 		self.grid = Grid()
@@ -80,6 +80,9 @@ class Game:
 		assert STAGES.COUNT == 12
 		stayConnected = self.session.loadResponses()
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.WON, STAGES.LOST]:
+			if '--autoplay-repeat' in sys.argv and not self.session.connected and not any(self.session.alreadySent.values()):
+				logging.debug('Autoplay repeat')
+				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
 			self.session.quit(must=True)
