@@ -36,7 +36,7 @@ def game():
 					game.toggleGameReady()
 			elif event.type == pygame.MOUSEBUTTONDOWN:
 				if event.button == 1:
-					game.mouseClick(event.pos, rightClick=False)
+					game.mouseClick(event.pos)
 				elif event.button == 3:
 					game.mouseClick(event.pos, rightClick=True)
 				elif event.button == 4: # scroll up
@@ -48,6 +48,9 @@ def game():
 					Frontend.windowGrabbedPos = None
 			elif event.type == pygame.MOUSEMOTION:
 				game.mouseMovement(event)
+			elif event.type in [pygame.WINDOWFOCUSGAINED, pygame.WINDOWFOCUSLOST, pygame.WINDOWRESTORED]:
+				Frontend.windowHasFocus = event.type != pygame.WINDOWFOCUSLOST
+				game.drawStatic()
 
 		game.handleRequests()
 		game.drawGame()

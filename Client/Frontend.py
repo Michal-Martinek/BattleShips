@@ -15,10 +15,13 @@ class _Frontend:
 	def __init__(self):
 		self.display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
 		self.SDLwindow = Window.from_display_module()
+		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
 		self.windowGrabbedPos: list[int, int] = None
 		self.headerCloseActive = False
+		self.windowHasFocus = True
 		
 		self.headerCross = self._loadImage(graphicsDir, 'header_close.png')
+		self.headerCrossUnfocused = self._loadImage(graphicsDir, 'header_close_unfocused.png')
 		self.errSurf = pygame.Surface((30, 30))
 		self.errSurf.fill((255, 0, 0))
 		pygame.draw.rect(self.errSurf, (118, 205, 226), (5, 4, 25, 8))
@@ -27,12 +30,14 @@ class _Frontend:
 			'ArialMiddle': pygame.font.SysFont('arial', 40),
 			'ArialBig':    pygame.font.SysFont('arial', 60),
 			'ArialSmall':  pygame.font.SysFont('arial', 20),
+			'ArialHeader': pygame.font.SysFont('arial', 17),
 		}
 		self.imgs: list[dict[str, list[pygame.Surface]]] = None
 		self._loadShips()
 		self.frameCache: dict[str, pygame.Surface] = dict()
 
 		self.header = self._genHeader()
+		self.HUD = self._genHUD()
 		self.background = self._genBackground()
 
 	# images --------------------------------------------
@@ -102,22 +107,26 @@ class _Frontend:
 	def _genHeader(self) -> pygame.Surface:
 		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.HEADER_HEIGHT))
 		surf.fill((40, 40, 40))
-		pygame.draw.line(surf, (255, 255, 255), (0, 0), (Constants.SCREEN_WIDTH, 0))
-		pygame.draw.line(surf, (255, 255, 255), (0, Constants.HEADER_HEIGHT-1), (Constants.SCREEN_WIDTH, Constants.HEADER_HEIGHT-1))
-		pygame.draw.line(surf, (255, 255, 255), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT))
+		pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
 		surf.blit(self._loadImage(graphicsDir, 'BattleShips.ico'), (0, 0))
-		label = pygame.font.SysFont('arial', 17).render('Battleships', False, (255, 255, 255))
-		self._blitPositioned(surf, 'midleft', Constants.HEADER_NAME_POS, label)
+		return surf
+	def _genHUD(self) -> pygame.Surface:
+		surf = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))
+		surf.fill(self.COLORKEY)
+		self.draw_rect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=surf, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
+		pygame.draw.line(surf, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
+		surf.set_colorkey(self.COLORKEY)
 		return surf
 	def _genBackground(self) -> pygame.Surface:
 		cross = self._loadImage(graphicsDir, 'grid-cross.png')
 		surf = pygame.Surface((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT - Constants.HEADER_HEIGHT))
 		surf.fill((0, 0, 255))
-		for y in range(Constants.GRID_HEIGHT):
-			for x in range(Constants.GRID_WIDTH):
+		for y in range(1, Constants.GRID_HEIGHT):
+			for x in range(1, Constants.GRID_WIDTH):
 				crossRect = cross.get_rect()
-				crossRect.center = (x * Constants.GRID_X_SPACING - crossRect.width // 2, y * Constants.GRID_Y_SPACING - crossRect.height // 2)
+				crossRect.center = x * Constants.GRID_X_SPACING - crossRect.width // 2, y * Constants.GRID_Y_SPACING - crossRect.height // 2 + Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT
 				surf.blit(cross, crossRect)
+		pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (0, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, 0)])
 		return surf
 	
 	def getFrame(self, size: int, horizontal: bool, hitted: list[bool], frame: int) -> pygame.Surface:
@@ -163,10 +172,15 @@ class _Frontend:
 		self.display.fill(color)
 	def draw_header(self):
 		self.display.blit(self.header, (0, 0))
+		label = self.fonts['ArialHeader'].render('Battleships', False, (255, 255, 255) if self.windowHasFocus else (160, 160, 160))
+		self._blitPositioned(self.display, 'midleft', Constants.HEADER_NAME_POS, label)
+
 		self.headerCloseActive = Constants.HEADER_CLOSE_RECT.collidepoint(pygame.mouse.get_pos())
-		if self.headerCloseActive:
+		if self.windowHasFocus and self.headerCloseActive:
 			pygame.draw.rect(self.display, (255, 0, 0), Constants.HEADER_CLOSE_RECT)
-		self.display.blit(self.headerCross, Constants.HEADER_CLOSE_RECT)
+		self.display.blit(self.headerCross if self.windowHasFocus else self.headerCrossUnfocused, Constants.HEADER_CLOSE_RECT)
+	def drawHUD(self):
+		self.display.blit(self.HUD, Constants.HUD_RECT)
 	def fill_backgnd(self):
 		self.display.blit(self.background, (0, Constants.HEADER_HEIGHT))
 	def render(self, font:str, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **rectKwargs):
@@ -189,15 +203,14 @@ class _Frontend:
 		if mousePos[1] <= Constants.HEADER_HEIGHT:
 			self.windowGrabbedPos = list(mousePos)
 			return True
-	def moveWindow(self, mousePos):
-		if self.windowGrabbedPos:
-			self.SDLwindow.position = self.SDLwindow.position[0] - self.windowGrabbedPos[0] + mousePos[0], self.SDLwindow.position[1] - self.windowGrabbedPos[1] + mousePos[1]
-			return True
-	def draw_rect(self, rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **kwargs):
+	def moveWindow(self, mouseRel):
+		self.SDLwindow.position = self.SDLwindow.position[0] - self.windowGrabbedPos[0] + mouseRel[0], self.SDLwindow.position[1] - self.windowGrabbedPos[1] + mouseRel[1]
+	def draw_rect(self, rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, surf=None, **kwargs):
 		if isinstance(rect, tuple): rect = pygame.Rect(*rect)
 		rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
-		if backgroundColor: pygame.draw.rect(self.display, backgroundColor, rect, **kwargs)
-		if boundaryColor: pygame.draw.rect(self.display, boundaryColor, rect, boundaryWidth, **kwargs)
+		if not surf: surf = self.display
+		if backgroundColor: pygame.draw.rect(surf, backgroundColor, rect, **kwargs)
+		if boundaryColor: pygame.draw.rect(surf, boundaryColor, rect, boundaryWidth, **kwargs)
 	def draw_circle(self, color, pos, size):
 		pygame.draw.circle(self.display, color, pos, size)
 	def draw_line(self, color, start, end, width):
