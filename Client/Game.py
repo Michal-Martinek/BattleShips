@@ -105,20 +105,23 @@ class Game:
 	def changeCursor(self):
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeCursor(mouse.get_pos())
-	def mouseClick(self, mousePos, rightClick):
-		if not rightClick and Frontend.grabWindow(mousePos): return
-		elif self.gameStage == STAGES.MULTIPLAYER_MENU and not rightClick:
+	def mouseClick(self, mousePos, rightClick=False):
+		if rightClick and self.gameStage != STAGES.PLACING: return
+		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
+			pygame.event.post(pygame.event.Event(pygame.QUIT))
+		elif not self.grid.flyingShip.size and Frontend.grabWindow(mousePos): return
+		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
 			if self.options.mouseClick(mousePos): self.drawStatic()
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed:
 				self.toggleGameReady()
-		elif self.gameStage == STAGES.SHOOTING and not rightClick:
+		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
 		if Frontend.moveWindow(event.pos): return
 		elif Frontend.headerCloseActive ^ Constants.HEADER_CLOSE_RECT.collidepoint(event.pos):
-			self.drawStatic()
+			self.drawStatic(False)
 	def keydownInMenu(self, event):
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
 			if self.options.inputActive: self.options.inputActive = False
@@ -159,9 +162,9 @@ class Game:
 			return
 		Frontend.draw_header()
 		Frontend.update()
-	def drawStatic(self):
+	def drawStatic(self, redraw=True):
 		assert STAGES.COUNT == 12
-		Frontend.fill_color((255, 255, 255))
+		if redraw: Frontend.fill_color((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
 			Frontend.render('ArialBig', (150, 300), 'MAIN MENU')
 			Frontend.render('ArialSmall', (150, 400), 'Press ENTER to play multiplayer')
@@ -179,7 +182,6 @@ class Game:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
 			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit')
-		else: return
 		Frontend.draw_header()
 		Frontend.update()
 
