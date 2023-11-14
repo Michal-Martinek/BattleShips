@@ -112,6 +112,8 @@ class Game:
 		if rightClick and self.gameStage != STAGES.PLACING: return
 		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
 			pygame.event.post(pygame.event.Event(pygame.QUIT))
+		elif Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos):
+			pygame.display.iconify()
 		elif not self.grid.flyingShip.size and Frontend.grabWindow(mousePos): return
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
 			if self.options.mouseClick(mousePos): self.drawStatic()
@@ -123,7 +125,7 @@ class Game:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
 		if Frontend.windowGrabbedPos: return Frontend.moveWindow(event.pos)
-		elif Frontend.headerCloseActive ^ Constants.HEADER_CLOSE_RECT.collidepoint(event.pos):
+		elif Frontend.headerCloseActive ^ Constants.HEADER_CLOSE_RECT.collidepoint(event.pos) or Frontend.headerMinimizeActive ^ Constants.HEADER_MINIMIZE_RECT.collidepoint(event.pos):
 			self.drawStatic()
 	def keydownInMenu(self, event):
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:

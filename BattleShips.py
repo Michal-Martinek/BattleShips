@@ -53,7 +53,7 @@ def game():
 				game.drawStatic()
 
 		game.handleRequests()
-		game.drawGame()
+		if pygame.display.get_active(): game.drawGame()
 		if game.gameStage != STAGES.CLOSING: clockObj.tick(Constants.FPS)
 
 def main():

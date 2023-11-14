@@ -17,6 +17,7 @@ class _Frontend:
 		self.SDLwindow = Window.from_display_module()
 		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
 		self.windowGrabbedPos: list[int, int] = None
+		self.headerMinimizeActive = False
 		self.headerCloseActive = False
 		self.windowHasFocus = True
 		
@@ -174,6 +175,11 @@ class _Frontend:
 		self.display.blit(self.header, (0, 0))
 		label = self.fonts['ArialHeader'].render('Battleships', False, (255, 255, 255) if self.windowHasFocus else (160, 160, 160))
 		self._blitPositioned(self.display, 'midleft', Constants.HEADER_NAME_POS, label)
+
+		self.headerMinimizeActive = Constants.HEADER_MINIMIZE_RECT.collidepoint(pygame.mouse.get_pos())
+		if self.windowHasFocus and self.headerMinimizeActive:
+			pygame.draw.rect(self.display, (140, 140, 140), Constants.HEADER_MINIMIZE_RECT)
+		self.draw_line((255, 255, 255) if self.windowHasFocus else (160, 160, 160), *Constants.HEADER_MINIMIZE_LINE, 3)
 
 		self.headerCloseActive = Constants.HEADER_CLOSE_RECT.collidepoint(pygame.mouse.get_pos())
 		if self.windowHasFocus and self.headerCloseActive:
