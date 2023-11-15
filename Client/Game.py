@@ -41,7 +41,8 @@ class Game:
 		self.newGameStage(STAGES.PAIRING)
 	def pairCallback(self, res):
 		if res['paired']:
-			logging.info('Paired, starting placing stage')
+			logging.info(f"Paired with {res['opponent']['id']} - '{res['opponent']['name']}', starting placing stage")
+			self.options.opponentName = res['opponent']['name']
 			self.newGameStage(STAGES.PLACING)
 	def gameReadiness(self):
 		assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
@@ -92,7 +93,7 @@ class Game:
 			self.newGameStage(STAGES.WON)
 		
 		elif self.gameStage == STAGES.CONNECTING:
-			self.session.tryToSend(COM.CONNECT, {}, self.connectCallback, blocking=False)
+			self.session.tryToSend(COM.CONNECT, {'name': self.options.submittedPlayerName()}, self.connectCallback, blocking=False)
 		elif self.gameStage == STAGES.PAIRING:
 			self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
@@ -166,7 +167,7 @@ class Game:
 		else:
 			return
 		Frontend.draw_header()
-		Frontend.drawHUD()
+		Frontend.drawHUD(self.options.submittedPlayerName(), self.options.opponentName)
 		Frontend.update()
 	def drawStatic(self):
 		assert STAGES.COUNT == 12
@@ -185,7 +186,7 @@ class Game:
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.drawPlaced()
 			Frontend.render('ArialMiddle', (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
-			Frontend.drawHUD()
+			Frontend.drawHUD(self.options.submittedPlayerName(), self.options.opponentName)
 		elif self.gameStage in [STAGES.WON, STAGES.LOST]:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
@@ -201,6 +202,7 @@ class Options:
 		self.playerName: list[str] = []
 		self.cursor:int = 0 # points before char
 		self.inputActive = False
+		self.opponentName = ''
 	def addChar(self, c):
 		if c == ' ': c = '_'
 		if c and (c in string.ascii_letters or c in string.digits or c in '!#*+-_'):
@@ -226,6 +228,9 @@ class Options:
 		s = ''.join(self.playerName)
 		if self.inputActive: s = s[:self.cursor] + '|' + s[self.cursor:]
 		return s
+	def submittedPlayerName(self) -> str:
+		if not self.playerName: return 'Noname'
+		return ''.join(self.playerName)
 
 class Grid:
 	def __init__(self):

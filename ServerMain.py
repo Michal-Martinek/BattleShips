@@ -15,9 +15,10 @@ MAX_TIME_FOR_DISCONNECT = 30.
 MAX_TIME_FOR_BLOCKING = 20.
 
 class ConnectedPlayer:
-	def __init__(self, id: int):
+	def __init__(self, id: int, name: str):
 		self.connected: bool = True
 		self.id: int = id
+		self.name = name
 		self.inGame = False
 		self.gameId: int = 0
 		self.lastReqTime = time.time()
@@ -170,9 +171,9 @@ class Server:
 
 	def unknownIdReq(self, req: Request):
 		if req.command == COM.CONNECT:
-			player = self.newConnectedPlayer()
+			player = self.newConnectedPlayer(req.payload['name'])
 			self.players[player.id] = player
-			logging.info(f'connecting new player from {req.conn.getpeername()} as {player.id}')
+			logging.info(f"connecting new player from {req.conn.getpeername()} as {player.id}, name '{req.payload['name']}'")
 			req.playerId = player.id
 			self._sendResponse(req, {'id': player.id})
 		else:
@@ -301,22 +302,24 @@ class Server:
 		opponent = possible[0]
 		if opponent.id in self.blockingReqs: assert self.blockingReqs[opponent.id].req.command == COM.PAIR, 'if the opponent _isPairableWith then any blocking req must be a COM.PAIR'
 		return opponent
+	def _pairResPayload(self, opponent: ConnectedPlayer):
+		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name}}
 	def pairPlayer(self, player: ConnectedPlayer, req: Request):
 		if player.inGame:
 			game = self.games[player.gameId]
 			asert(game.gameStage == STAGES.PAIRING, req, 'Unexpected game stage for !PAIR', game.id)
 			game.gameStage = STAGES.PLACING
-			return self._sendResponse(req, {'paired': True}) # TODO report opponent id
+			return self._sendResponse(req, self._pairResPayload(game.getOpponent(player)))
 		opponent = self.findOpponent(player)
 		if opponent is None:
 			self.addBlockingReq(player, req, {'paired': False})
 		else:
 			bothPaired = False
 			if opponent.id in self.blockingReqs:
-				self.respondBlockingReq(opponent, {'paired': True})
+				self.respondBlockingReq(opponent, self._pairResPayload(player))
 				bothPaired = True
 			self.addNewGame(player, opponent, bothPaired)
-			self._sendResponse(req, {'paired': True})
+			self._sendResponse(req, self._pairResPayload(opponent))
 	def handleGameReadiness(self, player: ConnectedPlayer, game: Game, req: Request):
 		approved = game.gameReadiness(player, req.payload)
 		self._sendResponse(req, {'approved': approved})
@@ -369,9 +372,9 @@ class Server:
 					req.stayConnected = False
 					self.respondBlockingReq(req.player, useDefault=True)
 
-	def newConnectedPlayer(self):
+	def newConnectedPlayer(self, playerName):
 		id = self._generateNewID(self.players)
-		return ConnectedPlayer(id)
+		return ConnectedPlayer(id, playerName)
 	def addNewGame(self, player1, player2, bothPaired: bool):
 		id = self._generateNewID(self.games)
 		game = Game(id, player1, player2, bothPaired)

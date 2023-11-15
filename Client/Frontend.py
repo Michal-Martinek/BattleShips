@@ -15,7 +15,7 @@ class _Frontend:
 	def __init__(self):
 		self.display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
 		self.SDLwindow = Window.from_display_module()
-		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
+		self.SDLwindow.position = (self.SDLwindow.position[0], 10)
 		self.windowGrabbedPos: list[int, int] = None
 		self.headerMinimizeActive = False
 		self.headerCloseActive = False
@@ -154,7 +154,7 @@ class _Frontend:
 		return self.errSurf.copy()
 
 	@staticmethod
-	def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding) -> tuple[pygame.Rect, pygame.Rect]:
+	def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding, fitMode='topleft') -> tuple[pygame.Rect, pygame.Rect]:
 		'''@return: box rect (unpadded), label blit loc, blit area on the label'''
 		if isinstance(rect, pygame.Rect) or (isinstance(rect, tuple) and len(rect) == 4):
 			rect = pygame.Rect(rect)
@@ -164,8 +164,9 @@ class _Frontend:
 			labelArea = labelRect.copy()
 			labelArea.bottomright = labelDims.bottomright
 			return rect, labelRect, labelArea
-		rect = pygame.Rect(*rect, *labelDims.bottomright)
-		return rect, rect.copy(), labelDims
+		boxRect = pygame.Rect(0, 0, *labelDims.bottomright)
+		setattr(boxRect, fitMode, rect)
+		return boxRect, boxRect.copy(), labelDims
 	# interface ----------------------
 	def blit(self, surf: pygame.Surface, pos: list[int], area: pygame.Rect=None):
 		self.display.blit(surf, pos, area)
@@ -185,19 +186,21 @@ class _Frontend:
 		if self.windowHasFocus and self.headerCloseActive:
 			pygame.draw.rect(self.display, (255, 0, 0), Constants.HEADER_CLOSE_RECT)
 		self.display.blit(self.headerCross if self.windowHasFocus else self.headerCrossUnfocused, Constants.HEADER_CLOSE_RECT)
-	def drawHUD(self):
+	def drawHUD(self, playerName, opponentName):
 		self.display.blit(self.HUD, Constants.HUD_RECT)
+		self.render('ArialSmall', Constants.HUD_PLAYERNAME_OFFSETS[0], playerName, (255, 255, 255), fitMode='topleft')
+		self.render('ArialSmall', Constants.HUD_PLAYERNAME_OFFSETS[1], opponentName, (255, 255, 255), fitMode='topright')
 	def fill_backgnd(self):
 		self.display.blit(self.background, (0, Constants.HEADER_HEIGHT))
-	def render(self, font:str, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, **rectKwargs):
+	def render(self, font:str, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, *, fitMode='topleft', **rectKwargs):
 		'''
 		Draws text, optionally inside rect
-		@rect: (x, y) -> topleft of text
+		@rect: (x, y) -> <fitMode> of text
 			(x, y, w, h) -> text centered in rect, if it doesn't fit show the bottom right
 		@boundaryPadding: padding between boundary and text, rect size does not change
 		'''
 		label = self.fonts[font].render(text, True, textColor)
-		boxRect, labelRect, labelArea = self._convertRect(rect, label.get_rect(), boundaryPadding)
+		boxRect, labelRect, labelArea = self._convertRect(rect, label.get_rect(), boundaryPadding, fitMode)
 		self.draw_rect(boxRect, backgroundColor, boundaryColor, boundaryWidth, boundaryPadding, **rectKwargs)
 		self.blit(label, labelRect, labelArea)
 
