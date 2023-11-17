@@ -89,15 +89,14 @@ def _getFrameImpl(size, horizontal, hitted, frame) -> pygame.Surface:
 	assert len(strs) == 2, 'invalid strs'
 	return _mergeImgs(*[_loadShipFragment(size, s, frame) for s in strs], horizontal, offsets)
 def getFrame(size: int, horizontal: bool, hitted: list[bool], frame: int) -> pygame.Surface:
-	cacheStr = str(size) + '-' + str(int(horizontal)) + '-' + ''.join([str(int(x)) for x in hitted]) + '-' + str(frame)
-	if cacheStr in _FRAME_CACHE:
-		return _FRAME_CACHE[cacheStr]
+	frameStr = str(size) + '-' + str(int(horizontal)) + '-' + ''.join([str(int(x)) for x in hitted]) + '-' + str(frame)
+	if frameStr in SHIP_FRAMES: return SHIP_FRAMES[frameStr]
 	try:
-		frame = _getFrameWrapper(size, horizontal, hitted, frame)
-	except KeyError as e:
-		logging.error(f'failed to generate animation frame for {cacheStr}: ' + traceback.format_exception(type(e), e, None)[0][:-1])
+		frame = _getFrameImpl(size, horizontal, hitted, frame)
+	except Exception as e:
+		logging.error(f'failed to generate animation frame for {frameStr}: ' + traceback.format_exception(type(e), e, None)[0][:-1])
 		frame = IMG_ERR.copy()
-	_FRAME_CACHE[cacheStr] = frame
+	SHIP_FRAMES[frameStr] = frame
 	return frame
 
 # interface ------------------------------------------------------------
@@ -108,6 +107,12 @@ def grabWindow(mousePos):
 		return True
 def moveWindow(mousePos):
 	SDLwindow.position = SDLwindow.position[0] - windowGrabbedPos[0] + mousePos[0], SDLwindow.position[1] - windowGrabbedPos[1] + mousePos[1]
+def headerBtnCollide(mousePos) -> bool:
+	global headerMinimizeActive, headerCloseActive
+	minColl, closeColl = Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos), Constants.HEADER_CLOSE_RECT.collidepoint(mousePos)
+	changed = headerMinimizeActive ^ minColl or headerCloseActive ^ closeColl 
+	headerMinimizeActive, headerCloseActive = minColl, closeColl
+	return changed
 
 def drawHeader():
 	display.blit(IMG_HEADER, (0, 0))

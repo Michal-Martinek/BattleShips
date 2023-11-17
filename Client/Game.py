@@ -128,8 +128,7 @@ class Game:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
 		if Frontend.windowGrabbedPos: return Frontend.moveWindow(event.pos)
-		elif Frontend.headerCloseActive ^ Constants.HEADER_CLOSE_RECT.collidepoint(event.pos) or Frontend.headerMinimizeActive ^ Constants.HEADER_MINIMIZE_RECT.collidepoint(event.pos):
-			self.drawStatic()
+		if Frontend.headerBtnCollide(event.pos): self.drawStatic()
 	def keydownInMenu(self, event):
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
 			if self.options.inputActive: self.options.inputActive = False
