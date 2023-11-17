@@ -17,6 +17,7 @@ class Game:
 	def repeatableInit(self):
 		self.grid = Grid()
 		self.gameStage: STAGES = STAGES.MAIN_MENU
+		self.options.repeatableInit()
 	def newGameStage(self, stage: STAGES):
 		assert STAGES.COUNT == 12
 		assert stage != self.gameStage
@@ -28,10 +29,12 @@ class Game:
 			if self.gameStage != STAGES.CLOSING and '--autoplay' in sys.argv:
 				pygame.time.set_timer(pygame.QUIT, 1000, 1)
 		elif self.gameStage == STAGES.PLACING:
-			Frontend.genHUD(self.options.submittedPlayerName(), self.options.opponentName)
+			Frontend.genHUD(self.options, False)
 			if '--autoplace' in sys.argv:
 				self.grid.autoplace()
 				self.toggleGameReady()
+		elif self.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
+			Frontend.genHUD(self.options, True)
 		logging.debug(f'New game stage: {str(stage)}')
 		self.drawStatic()
 
@@ -45,7 +48,13 @@ class Game:
 		if res['paired']:
 			logging.info(f"Paired with {res['opponent']['id']} - '{res['opponent']['name']}', starting placing stage")
 			self.options.opponentName = res['opponent']['name']
+			if res['opponent']['ready']:
+				self.options.opponentReady = True
+				Frontend.genHUD(self.options, False)
 			self.newGameStage(STAGES.PLACING)
+	def opponentReadyCallback(self, res):
+		self.options.opponentReady = res['opponent_ready']
+		Frontend.genHUD(self.options, False)
 	def gameReadiness(self):
 		assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
 		if self.session.alreadySent[COM.GAME_READINESS]: return
@@ -57,6 +66,7 @@ class Game:
 		self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True)
 	def gameReadinessCallback(self, wasPlacing, res):
 		assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
+		self.options.opponentReady = res['opponent_ready']
 		if not wasPlacing and res['approved']:
 			self.newGameStage(STAGES.PLACING)
 	def gameWaitCallback(self, res):
@@ -98,6 +108,8 @@ class Game:
 			self.session.tryToSend(COM.CONNECT, {'name': self.options.submittedPlayerName()}, self.connectCallback, blocking=False)
 		elif self.gameStage == STAGES.PAIRING:
 			self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)
+		elif self.gameStage == STAGES.PLACING:
+			self.session.tryToSend(COM.OPPONENT_READY, {}, self.opponentReadyCallback, blocking=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
 		elif self.gameStage == STAGES.GETTING_SHOT:
@@ -201,9 +213,13 @@ class Options:
 	MAX_LEN = 20
 	def __init__(self):
 		self.playerName: list[str] = []
-		self.cursor:int = 0 # points before char
+		self.repeatableInit()
+	def repeatableInit(self):
+		self.cursor:int = len(self.playerName) # points before char
 		self.inputActive = False
 		self.opponentName = ''
+		self.opponentReady = False
+
 	def addChar(self, c):
 		if c == ' ': c = '_'
 		if c and (c in string.ascii_letters or c in string.digits or c in '!#*+-_'):

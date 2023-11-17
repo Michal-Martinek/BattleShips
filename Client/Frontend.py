@@ -1,4 +1,4 @@
-import os, typing
+import os
 import logging, traceback
 import pygame
 from . import Constants
@@ -183,17 +183,16 @@ def genHeader() -> pygame.Surface:
 	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
 	surf.blit(loadImage('BattleShips.ico'), (0, 0))
 	return surf
-def _adjustIconVec(iconIdx, nameRect):
-	Constants.HUD_ICON_VECS[iconIdx].x += nameRect.right if iconIdx == 0 else nameRect.left
-def genHUD(playerName, opponentName):
+def genHUD(options, isShooting):
 	IMG_HUD.fill(COLORKEY)
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
 
-	rect = render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[0], playerName, (255, 255, 255), surf=IMG_HUD)
-	_adjustIconVec(0, rect)
-	rect = render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[1], opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright')
-	_adjustIconVec(1, rect)
+	iconRects = [r.copy() for r in Constants.HUD_ICON_RECTS_DEFAULTS]
+	iconRects[0].x += render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
+	iconRects[1].x += render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
+
+	if not isShooting: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 	IMG_HUD.set_colorkey(COLORKEY)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')

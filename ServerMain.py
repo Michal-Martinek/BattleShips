@@ -118,7 +118,7 @@ class Game:
 		logging.info(f'starting shooting game id {self.id}')
 		self.gameStage = STAGES.SHOOTING
 		self.playerOnTurn = random.choice(list(self.players.keys()))
-	def opponentShottedReq(self, player: ConnectedPlayer) -> tuple[bool, list[int], bool]:
+	def opponentShottedReq(self, player: ConnectedPlayer) -> tuple[list[int], bool]:
 		'''request called when responding to COM.OPPONENT_SHOT
 		@return (list[int] - where opponent shotted, bool - if you lost'''
 		pos = self.shottedPos
@@ -237,7 +237,9 @@ class Server:
 			game = self.games[player.gameId]
 			req.stayConnected = game.gameActive
 
-			if req.command == COM.GAME_READINESS:
+			if req.command == COM.OPPONENT_READY:
+				self.handleOpponentReady(player, game, req)
+			elif req.command == COM.GAME_READINESS:
 				self.handleGameReadiness(player, game, req)
 			elif req.command == COM.GAME_WAIT:
 				self.handleGameWait(player, game, req)
@@ -303,7 +305,7 @@ class Server:
 		if opponent.id in self.blockingReqs: assert self.blockingReqs[opponent.id].req.command == COM.PAIR, 'if the opponent _isPairableWith then any blocking req must be a COM.PAIR'
 		return opponent
 	def _pairResPayload(self, opponent: ConnectedPlayer):
-		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name}}
+		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name, 'ready': opponent.shootingReady()}}
 	def pairPlayer(self, player: ConnectedPlayer, req: Request):
 		if player.inGame:
 			game = self.games[player.gameId]
@@ -320,14 +322,19 @@ class Server:
 				bothPaired = True
 			self.addNewGame(player, opponent, bothPaired)
 			self._sendResponse(req, self._pairResPayload(opponent))
+	def handleOpponentReady(self, player: ConnectedPlayer, game: Game, req: Request):
+		self.addBlockingReq(player, req, {'opponent_ready': game.getOpponent(player).shootingReady()})
 	def handleGameReadiness(self, player: ConnectedPlayer, game: Game, req: Request):
 		approved = game.gameReadiness(player, req.payload)
-		self._sendResponse(req, {'approved': approved})
-		if game.gameStage == STAGES.SHOOTING:
-			opponent = game.getOpponent(player)
-			if opponent.id in self.blockingReqs:
-				assert self.blockingReqs[opponent.id].command == COM.GAME_WAIT
-				self.respondBlockingReq(opponent, {'started': True, 'on_turn': game.playerOnTurn})
+		self._sendResponse(req, {'approved': approved, 'opponent_ready': game.getOpponent(player).shootingReady()})
+		opponent = game.getOpponent(player)
+		if opponent.id not in self.blockingReqs: return
+		if game.gameStage == STAGES.PLACING:
+			assert self.blockingReqs[opponent.id].command == COM.OPPONENT_READY
+			self.respondBlockingReq(opponent, {'opponent_ready': req.payload['ready']})
+		elif game.gameStage == STAGES.SHOOTING:
+			assert self.blockingReqs[opponent.id].command == COM.GAME_WAIT
+			self.respondBlockingReq(opponent, {'started': True, 'on_turn': game.playerOnTurn})
 	def handleGameWait(self, player: ConnectedPlayer, game: Game, req: Request):
 		asert(player.shootingReady(), req, 'Unexpected !GAME_WAIT from unready player', player.id)
 		if game.gameStage == STAGES.SHOOTING:

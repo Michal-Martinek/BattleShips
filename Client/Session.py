@@ -45,7 +45,7 @@ class Session:
 		self.recvThread.start()
 	def repeatebleInit(self):
 		self.id: int = 0
-		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
+		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.OPPONENT_READY: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
 		self.connected = False # NOTE session is disconnected while not in game
 
 	def setAlreadySent(self, comm: COM):

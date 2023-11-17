@@ -1,4 +1,4 @@
-from pygame import Rect, Vector2
+from pygame import Rect
 
 GRID_HEIGHT = 10
 GRID_WIDTH = 10
@@ -18,7 +18,7 @@ HEADER_CLOSE_RECT = Rect(SCREEN_WIDTH - 32, 0, 32, HEADER_HEIGHT)
 HUD_RECT = Rect(0, HEADER_HEIGHT, SCREEN_WIDTH, 30)
 HUD_BOUNDARY_RAD = 15
 HUD_PLAYERNAME_OFFSETS = (17, 2), (SCREEN_WIDTH - 17, 2)
-HUD_ICON_VECS = Vector2(10, HUD_RECT.centery), Vector2(-10, HUD_RECT.centery) # NOTE later moved to fit next to player name
+HUD_ICON_RECTS_DEFAULTS = Rect(10, 3, 0, 0), Rect(-10, 3, 0, 0)
 
 GRID_Y_OFFSET = HUD_RECT.bottom + 8
 MULTIPLAYER_INPUT_BOX = Rect(150, 320, 300, 60)
