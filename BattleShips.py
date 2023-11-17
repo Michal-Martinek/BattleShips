@@ -5,7 +5,7 @@ import logging
 from Client import Game, Constants
 from Shared.Enums import STAGES
 from Shared.Helpers import runFuncLogged, initLogging
-from Client.Frontend import Frontend
+from Client import Frontend
 
 def game():
 	initLogging('client_log.txt')

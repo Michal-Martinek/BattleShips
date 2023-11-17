@@ -2,7 +2,7 @@ import logging, sys, string
 from pygame import Rect, mouse
 import pygame
 from . import Constants
-from .Frontend import Frontend
+from . import Frontend
 from .Session import Session
 from Shared.Enums import SHOTS, STAGES, COM
 
@@ -27,9 +27,11 @@ class Game:
 			self.session.disconnect()
 			if self.gameStage != STAGES.CLOSING and '--autoplay' in sys.argv:
 				pygame.time.set_timer(pygame.QUIT, 1000, 1)
-		elif self.gameStage == STAGES.PLACING and '--autoplace' in sys.argv:
-			self.grid.autoplace()
-			self.toggleGameReady()
+		elif self.gameStage == STAGES.PLACING:
+			Frontend.genHUD(self.options.submittedPlayerName(), self.options.opponentName)
+			if '--autoplace' in sys.argv:
+				self.grid.autoplace()
+				self.toggleGameReady()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.drawStatic()
 
@@ -166,32 +168,32 @@ class Game:
 			self.grid.drawMineNotHitted()
 		else:
 			return
-		Frontend.draw_header()
-		Frontend.drawHUD(self.options.submittedPlayerName(), self.options.opponentName)
+		Frontend.drawHeader()
+		Frontend.drawHUD()
 		Frontend.update()
 	def drawStatic(self):
 		assert STAGES.COUNT == 12
 		if self.gameStage in [STAGES.PLACING, STAGES.SHOOTING, STAGES.GETTING_SHOT]: return
-		Frontend.fill_color((255, 255, 255))
+		Frontend.fillColor((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
-			Frontend.render('ArialBig', (150, 300), 'MAIN MENU')
-			Frontend.render('ArialSmall', (150, 400), 'Press ENTER to play multiplayer')
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), 'MAIN MENU')
+			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press ENTER to play multiplayer')
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
-			Frontend.render('ArialBig', (150, 150), 'MULTIPLAYER')
-			Frontend.render('ArialMiddle', (150, 250), 'Input your name')
-			Frontend.render('ArialMiddle', Constants.MULTIPLAYER_INPUT_BOX, self.options.showedPlayerName(), (0, 0, 0), (255, 255, 255) if self.options.inputActive else (128, 128, 128), (0, 0, 0), 3, 8)
-			Frontend.render('ArialSmall', (150, 450), 'Press ENTER to play...')
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 150), 'MULTIPLAYER')
+			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (150, 250), 'Input your name')
+			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, Constants.MULTIPLAYER_INPUT_BOX, self.options.showedPlayerName(), (0, 0, 0), (255, 255, 255) if self.options.inputActive else (128, 128, 128), (0, 0, 0), 3, 8)
+			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 450), 'Press ENTER to play...')
 		elif self.gameStage == STAGES.PAIRING:
-			Frontend.render('ArialBig', (50, 300), 'Waiting for opponent...')
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (50, 300), 'Waiting for opponent...')
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.drawPlaced()
-			Frontend.render('ArialMiddle', (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
-			Frontend.drawHUD(self.options.submittedPlayerName(), self.options.opponentName)
+			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
+			Frontend.drawHUD()
 		elif self.gameStage in [STAGES.WON, STAGES.LOST]:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
-			Frontend.render('ArialBig', (150, 300), message, (0, 0, 0))
-			Frontend.render('ArialSmall', (150, 400), 'Press any key for exit')
-		Frontend.draw_header()
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), message, (0, 0, 0))
+			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
+		Frontend.drawHeader()
 		Frontend.update()
 
 class Options:
@@ -361,7 +363,7 @@ class Grid:
 
 
 	def drawPlaced(self):
-		Frontend.fill_backgnd()
+		Frontend.drawBackground()
 		for ship in self.placedShips:
 			ship.draw()
 	def drawMineNotHitted(self):
@@ -369,21 +371,21 @@ class Grid:
 			for x, col in enumerate(row):
 				if col == SHOTS.NOT_HITTED:
 					pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
-					Frontend.draw_circle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
+					Frontend.drawCircle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
 	def drawFlying(self):
 		if self.flyingShip.size:
 			self.flyingShip.draw()
 	def drawShooting(self):
-		Frontend.fill_backgnd()
+		Frontend.drawBackground()
 		for y, lineShotted in enumerate(self.shottedMap):
 			for x, shotted in enumerate(lineShotted):
 				pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
 				if shotted == SHOTS.HITTED:
-					Frontend.draw_circle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
+					Frontend.drawCircle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
 				elif shotted == SHOTS.NOT_HITTED:
-					Frontend.draw_circle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
+					Frontend.drawCircle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
 				elif shotted == SHOTS.BLOCKED:
-					Frontend.draw_circle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
+					Frontend.drawCircle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
 
 		for ship in self.wholeHittedShips:
 			ship.draw()
