@@ -10,8 +10,8 @@ class Game:
 	def __init__(self):
 		self.session = Session()
 		self.options = Options()
+		self.redrawNeeded = True
 		self.repeatableInit()
-		self.drawStatic()
 		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
 			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self):
@@ -36,7 +36,7 @@ class Game:
 		elif self.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
 			Frontend.genHUD(self.options, True)
 		logging.debug(f'New game stage: {str(stage)}')
-		self.drawStatic()
+		self.redrawNeeded = True
 
 	# requests -------------------------------------------------
 	def connectCallback(self, res):
@@ -55,17 +55,18 @@ class Game:
 	def opponentReadyCallback(self, res):
 		self.options.opponentReady = res['opponent_ready']
 		Frontend.genHUD(self.options, False)
+		self.redrawNeeded = True
 	def gameReadiness(self):
 		assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
 		if self.session.alreadySent[COM.GAME_READINESS]: return
-		state =  {'ships': self.grid.shipsDicts(), 'ready': self.gameStage != STAGES.GAME_WAIT}
 		wasPlacing = self.gameStage == STAGES.PLACING
+		if wasPlacing: self.newGameStage(STAGES.GAME_WAIT)
+		state = {'ships': self.grid.shipsDicts(), 'ready': wasPlacing}
 		lamda = lambda res: self.gameReadinessCallback(wasPlacing, res)
-		if self.gameStage == STAGES.PLACING:
-			self.newGameStage(STAGES.GAME_WAIT)
 		self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True)
 	def gameReadinessCallback(self, wasPlacing, res):
 		assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
+		self.redrawNeeded = True
 		self.options.opponentReady = res['opponent_ready']
 		if not wasPlacing and res['approved']:
 			self.newGameStage(STAGES.PLACING)
@@ -120,18 +121,22 @@ class Game:
 	def rotateShip(self):
 		if self.gameStage == STAGES.PLACING:
 			self.grid.rotateShip()
+			self.redrawNeeded = True
 	def changeCursor(self):
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeCursor(mouse.get_pos())
+			self.redrawNeeded = True
 	def mouseClick(self, mousePos, rightClick=False):
 		if rightClick and self.gameStage != STAGES.PLACING: return
+		self.redrawNeeded = True
 		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
 			pygame.event.post(pygame.event.Event(pygame.QUIT))
 		elif Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos):
 			pygame.display.iconify()
-		elif not self.grid.flyingShip.size and Frontend.grabWindow(mousePos): return
-		elif self.gameStage == STAGES.MULTIPLAYER_MENU:
-			if self.options.mouseClick(mousePos): self.drawStatic()
+		elif Frontend.grabWindow(mousePos):
+			self.options.inputActive = False
+			self.grid.removeShipInCursor()
+		elif self.gameStage == STAGES.MULTIPLAYER_MENU: self.options.mouseClick(mousePos)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed:
@@ -140,8 +145,9 @@ class Game:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
 		if Frontend.windowGrabbedPos: return Frontend.moveWindow(event.pos)
-		if Frontend.headerBtnCollide(event.pos): self.drawStatic()
+		if Frontend.headerBtnCollide(event.pos) or self.grid.flyingShip.size: self.redrawNeeded = True
 	def keydownInMenu(self, event):
+		self.redrawNeeded = True
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
 			if self.options.inputActive: self.options.inputActive = False
 			else: self.newGameStage(STAGES.MULTIPLAYER_MENU if self.gameStage == STAGES.MAIN_MENU else STAGES.CONNECTING)
@@ -151,12 +157,14 @@ class Game:
 			self.options.removeChar(event.key == pygame.K_DELETE)
 		else:
 			self.options.addChar(event.unicode)
-		self.drawStatic()
 	def changeShipSize(self, increment: int):
 		if self.gameStage == STAGES.PLACING and not self.grid.allShipsPlaced():
 			self.grid.changeSize(increment)
+			self.redrawNeeded = True
 	def advanceAnimations(self):
-		Ship.advanceAnimations()
+		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
+			self.redrawNeeded |= pygame.display.get_active()
+			Ship.advanceAnimations()
 	def shoot(self, mousePos):
 		if self.gameStage == STAGES.SHOOTING:
 			gridPos = self.grid.shoot(mousePos)
@@ -169,22 +177,28 @@ class Game:
 	# drawing --------------------------------
 	def drawGame(self):
 		assert STAGES.COUNT == 12
+		if not self.redrawNeeded or self.gameStage == STAGES.CLOSING: return
+		self.redrawNeeded = False
+		drawHud = True
 		if self.gameStage == STAGES.PLACING:
 			self.grid.drawPlaced()
 			self.grid.drawFlying()
+		elif self.gameStage == STAGES.GAME_WAIT:
+			self.grid.drawPlaced()
+			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
 		elif self.gameStage == STAGES.SHOOTING:
 			self.grid.drawShooting()
 		elif self.gameStage == STAGES.GETTING_SHOT:
 			self.grid.drawPlaced()
 			self.grid.drawMineNotHitted()
 		else:
-			return
+			drawHud = False
+			self.drawStatic()
 		Frontend.drawHeader()
-		Frontend.drawHUD()
+		if drawHud: Frontend.drawHUD()
 		Frontend.update()
 	def drawStatic(self):
 		assert STAGES.COUNT == 12
-		if self.gameStage in [STAGES.PLACING, STAGES.SHOOTING, STAGES.GETTING_SHOT]: return
 		Frontend.fillColor((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), 'MAIN MENU')
@@ -196,16 +210,10 @@ class Game:
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 450), 'Press ENTER to play...')
 		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (50, 300), 'Waiting for opponent...')
-		elif self.gameStage == STAGES.GAME_WAIT:
-			self.grid.drawPlaced()
-			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
-			Frontend.drawHUD()
 		elif self.gameStage in [STAGES.WON, STAGES.LOST]:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), message, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
-		Frontend.drawHeader()
-		Frontend.update()
 
 class Options:
 	'''Class responsible for loading, holding and storing client side options,

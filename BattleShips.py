@@ -50,10 +50,11 @@ def game():
 				game.mouseMovement(event)
 			elif event.type in [pygame.WINDOWFOCUSGAINED, pygame.WINDOWFOCUSLOST, pygame.WINDOWRESTORED]:
 				Frontend.windowHasFocus = event.type != pygame.WINDOWFOCUSLOST
-				game.drawStatic()
+				if not Frontend.windowHasFocus: game.options.inputActive = False
+				game.redrawNeeded = True
 
 		game.handleRequests()
-		if pygame.display.get_active(): game.drawGame()
+		game.drawGame()
 		if game.gameStage != STAGES.CLOSING: clockObj.tick(Constants.FPS)
 
 def main():
