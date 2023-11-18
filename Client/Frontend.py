@@ -17,6 +17,7 @@ pygame.draw.rect(IMG_ERR, (118, 205, 226), (5, 17, 25, 9))
 
 FONT_ARIAL_MIDDLE = pygame.font.SysFont('arial', 40)
 FONT_ARIAL_BIG = pygame.font.SysFont('arial', 60)
+FONT_ARIAL_PLAYERNAME = pygame.font.SysFont('arial', 22)
 FONT_ARIAL_SMALL = pygame.font.SysFont('arial', 20)
 FONT_ARIAL17 = pygame.font.SysFont('arial', 17)
 
@@ -183,16 +184,17 @@ def genHeader() -> pygame.Surface:
 	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
 	surf.blit(loadImage('BattleShips.ico'), (0, 0))
 	return surf
-def genHUD(options, isShooting):
+def genHUD(options, isShooting, onTurn=False):
 	IMG_HUD.fill(COLORKEY)
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
 
 	iconRects = [r.copy() for r in Constants.HUD_ICON_RECTS_DEFAULTS]
-	iconRects[0].x += render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
-	iconRects[1].x += render(FONT_ARIAL_SMALL, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
+	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
+	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 
 	if not isShooting: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
+	else: blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
 	IMG_HUD.set_colorkey(COLORKEY)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')
@@ -208,6 +210,7 @@ IMG_HEADER_CROSS = loadImage('header_close.png')
 IMG_HEADER_CROSS_UNFOCUSED = loadImage('header_close_unfocused.png')
 IMG_HUD_READY = loadImage('HUD_ready.png')
 IMG_HUD_PLACING = loadImage('HUD_placing.png')
+IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
 
 IMG_HEADER = genHeader()
 IMG_HUD = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))

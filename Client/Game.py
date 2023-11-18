@@ -37,7 +37,7 @@ class Game:
 				self.grid.autoplace()
 				self.toggleGameReady()
 		elif self.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
-			Frontend.genHUD(self.options, True)
+			Frontend.genHUD(self.options, True, self.gameStage == STAGES.SHOOTING)
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
 
@@ -134,6 +134,7 @@ class Game:
 		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
 			self.quit()
 		elif Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos):
+			self.grid.removeShipInCursor()
 			pygame.display.iconify()
 		elif Frontend.grabWindow(mousePos):
 			self.options.inputActive = False
@@ -173,7 +174,7 @@ class Game:
 			if gridPos:
 				self.shootReq(gridPos)
 	def toggleGameReady(self):
-		if self.grid.allShipsPlaced():
+		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT] and self.grid.allShipsPlaced():
 			logging.info('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
 			self.gameReadiness()
 	# drawing --------------------------------
