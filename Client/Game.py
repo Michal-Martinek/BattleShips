@@ -18,6 +18,9 @@ class Game:
 		self.grid = Grid()
 		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.options.repeatableInit()
+	def quit(self):
+		logging.info('Closing due to client quit')
+		self.newGameStage(STAGES.CLOSING)
 	def newGameStage(self, stage: STAGES):
 		assert STAGES.COUNT == 12
 		assert stage != self.gameStage
@@ -99,8 +102,7 @@ class Game:
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
-			self.session.quit(must=True)
-			Frontend.quit()
+			self.session.quit()
 		elif not stayConnected:
 			logging.warning('Server commanded disconnect')
 			self.newGameStage(STAGES.WON)
@@ -130,7 +132,7 @@ class Game:
 		if rightClick and self.gameStage != STAGES.PLACING: return
 		self.redrawNeeded = True
 		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
-			pygame.event.post(pygame.event.Event(pygame.QUIT))
+			self.quit()
 		elif Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos):
 			pygame.display.iconify()
 		elif Frontend.grabWindow(mousePos):

@@ -31,7 +31,6 @@ SERVER_ADDRES = ('192.168.0.159', 1250)
 
 class Session:
 	def __init__(self):
-		self.properlyClosed = False
 		self.repeatebleInit()
 
 		self.reqQueue: Queue[Request] = Queue()
@@ -92,27 +91,14 @@ class Session:
 		assert self.connected
 		self.tryToSend(COM.DISCONNECT, {}, lambda res: self.repeatebleInit(), blocking=False, mustSend=True)
 		self.connected = False
-	def _awaitNoPendingReqs(self):
-		'''drains all responses untill there are no pending requests'''
+	def quit(self):
+		'''gracefully closes session (recvs last reqs, joins threads), COM.DISCONNECT must have been sent in advance'''
 		while not self.noPendingReqs():
 			self.loadResponses(_drain=True)
-	def quit(self, must=False): # TODO only one usecase now
-		'''tries to close session, if 'must' it blocks untill closed
-		  if it gets to actually closing, the disconnect must have been sent in advance'''
-		if not self.properlyClosed:
-			if self.noPendingReqs() or must:
-				self._awaitNoPendingReqs()
-				assert not self.connected, 'the session is still connected'
-				self.quitNowEvent.set()
-				self.properlyClosed = self.joinThreads(must=must)
-				if must: assert self.properlyClosed
-	def joinThreads(self, must) -> bool:
-		tmout = None if must else 0.0
-		self.sendThread.join(timeout=tmout)
-		if self.sendThread.is_alive(): return False
-		self.recvThread.join(timeout=tmout)
-		if self.recvThread.is_alive(): return False
-		return True
+		assert not self.connected, 'the session is still connected'
+		self.quitNowEvent.set()
+		self.sendThread.join()
+		self.recvThread.join()
 	def checkThreads(self):
 		if not self.sendThread.is_alive():
 			raise RuntimeError('Thread-Send ended')

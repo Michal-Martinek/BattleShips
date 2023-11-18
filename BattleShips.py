@@ -15,11 +15,10 @@ def game():
 	game = Game.Game()
 
 	clockObj = pygame.time.Clock()
-	while game.gameStage != STAGES.CLOSING or not game.session.properlyClosed:
+	while game.gameStage != STAGES.CLOSING:
 		for event in pygame.fastevent.get():
 			if event.type == pygame.QUIT:
-				logging.info('Closing due to client quit')
-				game.newGameStage(STAGES.CLOSING)
+				game.quit()
 			elif event.type == pygame.USEREVENT:
 				game.advanceAnimations()
 			elif event.type == pygame.KEYDOWN:
@@ -55,9 +54,10 @@ def game():
 
 		game.handleRequests()
 		game.drawGame()
-		if game.gameStage != STAGES.CLOSING: clockObj.tick(Constants.FPS)
+		clockObj.tick(Constants.FPS)
 
 def main():
 	runFuncLogged(game)
+	Frontend.quit()
 if __name__ == '__main__':
 	main()
