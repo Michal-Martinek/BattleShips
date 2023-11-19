@@ -34,7 +34,7 @@ def loadImage(*paths) -> pygame.Surface:
 # runtime ---------------------------------------------------------------
 display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
 SDLwindow = Window.from_display_module()
-SDLwindow.position = (SDLwindow.position[0], 10)
+SDLwindow.position = (SDLwindow.position[0], 6)
 windowGrabbedPos: list[int, int] = None
 headerMinimizeActive = False
 headerCloseActive = False
