@@ -51,9 +51,6 @@ class Game:
 		if res['paired']:
 			logging.info(f"Paired with {res['opponent']['id']} - '{res['opponent']['name']}', starting placing stage")
 			self.options.opponentName = res['opponent']['name']
-			if res['opponent']['ready']:
-				self.options.opponentReady = True
-				Frontend.genHUD(self.options, False)
 			self.newGameStage(STAGES.PLACING)
 	def opponentReadyCallback(self, res):
 		self.options.opponentReady = res['opponent_ready']
@@ -73,6 +70,7 @@ class Game:
 		self.options.opponentReady = res['opponent_ready']
 		if not wasPlacing and res['approved']:
 			self.newGameStage(STAGES.PLACING)
+		else: Frontend.genHUD(self.options, False)
 	def gameWaitCallback(self, res):
 		if res['started']:
 			onTurn = res['on_turn'] == self.session.id
@@ -112,7 +110,7 @@ class Game:
 		elif self.gameStage == STAGES.PAIRING:
 			self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)
 		elif self.gameStage == STAGES.PLACING:
-			self.session.tryToSend(COM.OPPONENT_READY, {}, self.opponentReadyCallback, blocking=True)
+			self.session.tryToSend(COM.OPPONENT_READY, {'expected': self.options.opponentReady}, self.opponentReadyCallback, blocking=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
 		elif self.gameStage == STAGES.GETTING_SHOT:

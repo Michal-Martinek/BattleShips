@@ -305,7 +305,7 @@ class Server:
 		if opponent.id in self.blockingReqs: assert self.blockingReqs[opponent.id].req.command == COM.PAIR, 'if the opponent _isPairableWith then any blocking req must be a COM.PAIR'
 		return opponent
 	def _pairResPayload(self, opponent: ConnectedPlayer):
-		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name, 'ready': opponent.shootingReady()}}
+		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name}}
 	def pairPlayer(self, player: ConnectedPlayer, req: Request):
 		if player.inGame:
 			game = self.games[player.gameId]
@@ -323,11 +323,13 @@ class Server:
 			self.addNewGame(player, opponent, bothPaired)
 			self._sendResponse(req, self._pairResPayload(opponent))
 	def handleOpponentReady(self, player: ConnectedPlayer, game: Game, req: Request):
-		self.addBlockingReq(player, req, {'opponent_ready': game.getOpponent(player).shootingReady()})
+		if req.payload['expected'] ^ (ready := game.getOpponent(player).shootingReady()):
+			return self._sendResponse(req, {'opponent_ready': ready})
+		self.addBlockingReq(player, req, {'opponent_ready': ready})
 	def handleGameReadiness(self, player: ConnectedPlayer, game: Game, req: Request):
 		approved = game.gameReadiness(player, req.payload)
-		self._sendResponse(req, {'approved': approved, 'opponent_ready': game.getOpponent(player).shootingReady()})
 		opponent = game.getOpponent(player)
+		self._sendResponse(req, {'approved': approved, 'opponent_ready': opponent.shootingReady()})
 		if opponent.id not in self.blockingReqs: return
 		if game.gameStage == STAGES.PLACING:
 			assert self.blockingReqs[opponent.id].command == COM.OPPONENT_READY
