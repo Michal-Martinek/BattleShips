@@ -32,12 +32,12 @@ class Game:
 			if self.gameStage != STAGES.CLOSING and '--autoplay' in sys.argv:
 				pygame.time.set_timer(pygame.QUIT, 1000, 1)
 		elif self.gameStage == STAGES.PLACING:
-			Frontend.genHUD(self.options, False)
+			self.redrawHUD()
 			if '--autoplace' in sys.argv:
 				self.grid.autoplace()
 				self.toggleGameReady()
 		elif self.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
-			Frontend.genHUD(self.options, True, self.gameStage == STAGES.SHOOTING)
+			self.redrawHUD()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
 
@@ -54,8 +54,7 @@ class Game:
 			self.newGameStage(STAGES.PLACING)
 	def opponentReadyCallback(self, res):
 		self.options.opponentReady = res['opponent_ready']
-		Frontend.genHUD(self.options, False)
-		self.redrawNeeded = True
+		self.redrawHUD()
 	def gameReadiness(self):
 		assert self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]
 		if self.session.alreadySent[COM.GAME_READINESS]: return
@@ -66,11 +65,10 @@ class Game:
 		self.session.tryToSend(COM.GAME_READINESS, state, lamda, blocking=False, mustSend=True)
 	def gameReadinessCallback(self, wasPlacing, res):
 		assert res['approved'] or not wasPlacing, 'transition from placing to wait should always be approved'
-		self.redrawNeeded = True
 		self.options.opponentReady = res['opponent_ready']
 		if not wasPlacing and res['approved']:
 			self.newGameStage(STAGES.PLACING)
-		else: Frontend.genHUD(self.options, False)
+		else: self.redrawHUD()
 	def gameWaitCallback(self, res):
 		if res['started']:
 			onTurn = res['on_turn'] == self.session.id
@@ -142,6 +140,7 @@ class Game:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed:
 				self.toggleGameReady()
+				self.redrawHUD()
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
@@ -215,6 +214,9 @@ class Game:
 			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), message, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
+	def redrawHUD(self):
+		Frontend.genHUD(self.options, self.grid.shipSizes, self.gameStage)
+		self.redrawNeeded = True
 
 class Options:
 	'''Class responsible for loading, holding and storing client side options,

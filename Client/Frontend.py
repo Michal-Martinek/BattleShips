@@ -2,6 +2,7 @@ import os
 import logging, traceback
 import pygame
 from . import Constants
+from Shared.Enums import STAGES
 pygame.init()
 from pygame._sdl2 import Window
 
@@ -184,7 +185,13 @@ def genHeader() -> pygame.Surface:
 	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
 	surf.blit(loadImage('BattleShips.ico'), (0, 0))
 	return surf
-def genHUD(options, isShooting, onTurn=False):
+def genShipboxes(shipSizes: dict[int, int]):
+	for size, rect in enumerate(Constants.HUD_SHIPBOX_RECTS, 1):
+		blit(IMG_HUD_SHIPBOXES[size-1], rect, rectAttr='topright', surf=IMG_HUD)
+		remaining = shipSizes[size]
+		if size == 4 and remaining == 1: continue
+		blit(IMG_HUD_SHIPBOX_COUNTS[remaining], rect, rectAttr='topright', surf=IMG_HUD)
+def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
 	IMG_HUD.fill(COLORKEY)
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
@@ -193,8 +200,10 @@ def genHUD(options, isShooting, onTurn=False):
 	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
 	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 
-	if not isShooting: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
-	else: blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
+	genShipboxes(shipSizes)
+	if (onTurn := gameStage == STAGES.SHOOTING) or gameStage == STAGES.GETTING_SHOT:
+		blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
+	else: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 	IMG_HUD.set_colorkey(COLORKEY)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')
@@ -211,6 +220,8 @@ IMG_HEADER_CROSS_UNFOCUSED = loadImage('header_close_unfocused.png')
 IMG_HUD_READY = loadImage('HUD_ready.png')
 IMG_HUD_PLACING = loadImage('HUD_placing.png')
 IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
+IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)]
+IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
 
 IMG_HEADER = genHeader()
 IMG_HUD = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))
