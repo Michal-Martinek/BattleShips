@@ -129,7 +129,7 @@ class Game:
 	def shoot(self, player, pos) -> tuple[bool, dict, bool]:
 		'''@player - player who shotted
 		@pos - (x, y) pos where did he shoot
-		@return (bool - hitted, dict - whole ship hitted if any, bool - game won)'''
+		@return (bool - hitted, dict - sunken ship hitted if any, bool - game won)'''
 		self.shottedPos = pos
 		for ship in self.getOpponentState(player)['ships']:
 			x, y = ship['pos']
@@ -138,9 +138,9 @@ class Game:
 			if (x <= pos[0] <= x + (size - 1) * horizontal) and (y <= pos[1] <= y + (size - 1) * (not horizontal)):
 				hittedSpot = (pos[0] - x) if horizontal else (pos[1] - y)
 				ship['hitted'][hittedSpot] = True
-				wholeShip = ship if all(ship['hitted']) else None
+				sunkenShip = ship if all(ship['hitted']) else None
 				gameWon = all([all(ship['hitted']) for ship in self.getOpponentState(player)['ships']])
-				return True, wholeShip, gameWon
+				return True, sunkenShip, gameWon
 		return False, None, False
 
 
@@ -345,7 +345,7 @@ class Server:
 			self.addBlockingReq(player, req, {'started': False})
 	def shootReq(self, player: ConnectedPlayer, game: Game, req: Request):
 		asert(player.id == game.playerOnTurn, req, 'only player on turn can shoot')
-		hitted, wholeShip, gameWon = game.shoot(player, req.payload['pos'])
+		hitted, sunkenShip, gameWon = game.shoot(player, req.payload['pos'])
 		if gameWon:
 			game.gameStage = STAGES.WON
 			req.stayConnected = False
@@ -355,7 +355,7 @@ class Server:
 			blocking = self.blockingReqs[opponent.id]
 			assert blocking.command == COM.OPPONENT_SHOT
 			self.sendOpponentShottedRes(opponent, game, blocking)
-		self._sendResponse(req, {'hitted': hitted, 'whole_ship': wholeShip, 'game_won': gameWon})
+		self._sendResponse(req, {'hitted': hitted, 'sunken_ship': sunkenShip, 'game_won': gameWon})
 	def opponentShotted(self, player: ConnectedPlayer, game: Game, req: Request):
 		if game.didOpponentShoot(player):
 			self.sendOpponentShottedRes(player, game, req)

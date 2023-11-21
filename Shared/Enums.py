@@ -18,7 +18,7 @@ class STAGES(IntEnum):
 class SHOTS(IntEnum):
 	NOT_SHOTTED = auto()
 	HITTED = auto()
-	HITTED_WHOLE = auto()
+	HITTED_SUNKEN = auto()
 	NOT_HITTED = auto()
 	BLOCKED = auto()
 	SHOTTED_UNKNOWN = auto()

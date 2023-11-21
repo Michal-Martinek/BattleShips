@@ -1,6 +1,8 @@
 import logging, sys, string
 from pygame import Rect, mouse
 import pygame
+from typing import TypeVar, Optional
+
 from . import Constants
 from . import Frontend
 from .Session import Session
@@ -15,7 +17,8 @@ class Game:
 		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
 			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self):
-		self.grid = Grid()
+		self.grid = Grid(True)
+		self.opponentGrid = Grid(False)
 		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.options.repeatableInit()
 	def quit(self):
@@ -72,6 +75,7 @@ class Game:
 	def gameWaitCallback(self, res):
 		if res['started']:
 			onTurn = res['on_turn'] == self.session.id
+			self.grid.initShipSizes()
 			self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
 			logging.info('Shooting started')
 	def shootReq(self, gridPos):
@@ -79,15 +83,15 @@ class Game:
 		callback = lambda res: self.shootCallback(gridPos, res)
 		self.session.tryToSend(COM.SHOOT, {'pos': gridPos}, callback, blocking=False, mustSend=True)
 	def shootCallback(self, gridPos, res):
-		hitted, wholeShip, gameWon = res['hitted'], res['whole_ship'], res['game_won']
-		self.grid.updateHitted(gridPos, hitted, wholeShip)
+		hitted, sunkenShip, gameWon = res['hitted'], Ship.fromDict(res['sunken_ship']), res['game_won']
+		self.opponentGrid.gotShotted(gridPos, hitted, sunkenShip)
 		self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
 		if gameWon: logging.info('Game won')
 	def gettingShotCallback(self, res):
-		if res['shotted']:
-			self.grid.opponentShot(res['pos'])
-			self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
-			if res['lost']: logging.info('Game lost')
+		if not res['shotted']: return
+		self.grid.gotShotted(res['pos'])
+		self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
+		if res['lost']: logging.info('Game lost')
 
 	def handleRequests(self):
 		assert STAGES.COUNT == 12
@@ -167,7 +171,7 @@ class Game:
 			Ship.advanceAnimations()
 	def shoot(self, mousePos):
 		if self.gameStage == STAGES.SHOOTING:
-			gridPos = self.grid.shoot(mousePos)
+			gridPos = self.opponentGrid.shoot(mousePos)
 			if gridPos:
 				self.shootReq(gridPos)
 	def toggleGameReady(self):
@@ -181,16 +185,14 @@ class Game:
 		self.redrawNeeded = False
 		drawHud = True
 		if self.gameStage == STAGES.PLACING:
-			self.grid.drawPlaced()
-			self.grid.drawFlying()
+			self.grid.draw(flying=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
-			self.grid.drawPlaced()
+			self.grid.draw()
 			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
 		elif self.gameStage == STAGES.SHOOTING:
-			self.grid.drawShooting()
+			self.opponentGrid.draw(shots=True)
 		elif self.gameStage == STAGES.GETTING_SHOT:
-			self.grid.drawPlaced()
-			self.grid.drawMineNotHitted()
+			self.grid.draw(shots=True)
 		else:
 			drawHud = False
 			self.drawStatic()
@@ -215,7 +217,8 @@ class Game:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), message, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
 	def redrawHUD(self):
-		Frontend.genHUD(self.options, self.grid.shipSizes, self.gameStage)
+		grid = self.opponentGrid if self.gameStage == STAGES.SHOOTING else self.grid
+		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage)
 		self.redrawNeeded = True
 
 class Options:
@@ -260,20 +263,23 @@ class Options:
 		if not self.playerName: return 'Noname'
 		return ''.join(self.playerName)
 
+Ship = TypeVar('Ship')
 class Grid:
-	def __init__(self):
-		self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
+	def __init__(self, isLocal: bool):
+		self.isLocal = isLocal
+		self.initShipSizes()
 		self.flyingShip: Ship = Ship([-1, -1], 0, True)
-		self.placedShips: list[Ship] = []
-		self.shottedMap =  [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
-		self.wholeHittedShips: list[Ship] = []
-		self.mineNotHitted = [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+		self.ships: list[Ship] = []
+		self.shots = [[SHOTS.NOT_SHOTTED] * Constants.GRID_WIDTH for y in range(Constants.GRID_HEIGHT)]
+	def initShipSizes(self):
+		self.shipSizes: dict[int, int] = {1: 2, 2: 4, 3: 2, 4: 1} # shipSize : shipCount
 
 	def shipsDicts(self):
-		return [ship.asDict() for ship in self.placedShips]
+		return [ship.asDict() for ship in self.ships]
 	def allShipsPlaced(self):
 			return not any(self.shipSizes.values())
 
+	# interface ---------------------------------------------
 	def rotateShip(self): # TODO: maybe the one-ship shouldn't be turned?
 		self.flyingShip.horizontal = not self.flyingShip.horizontal
 	def changeCursor(self, mousePos):
@@ -298,7 +304,7 @@ class Grid:
 		gridRect = Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT)
 		if not gridRect.contains(placed.getOccupiedRect()):
 			return False
-		for ship in self.placedShips:
+		for ship in self.ships:
 			if placed.isColliding(ship):
 				return False
 		return True
@@ -307,7 +313,7 @@ class Grid:
 		placed = self.flyingShip.getPlacedShip()
 		canPlace = self.canPlaceShip(placed)
 		if canPlace:
-			self.placedShips.append(placed)
+			self.ships.append(placed)
 			self.shipSizes[placed.size] -= 1
 			self.changeSize(+1, canBeSame=True)
 		return canPlace
@@ -317,7 +323,7 @@ class Grid:
 			dicts = [{'pos': [3, 0], 'size': 2, 'horizontal': True, 'hitted': [False, False]}, {'pos': [4, 3], 'size': 2, 'horizontal': False, 'hitted': [False, False]}, {'pos': [5, 7], 'size': 3, 'horizontal': True, 'hitted': [False, False, False]}, {'pos': [1, 5], 'size': 4, 'horizontal': False, 'hitted': [False, False, False, False]}, {'pos': [8, 4], 'size': 1, 'horizontal': True, 'hitted': [False]}, {'pos': [6, 1], 'size': 1, 'horizontal': False, 'hitted': [False]}, {'pos': [5, 9], 'size': 2, 'horizontal': True, 'hitted': [False, False]}, {'pos': [1, 1], 'size': 2, 'horizontal': False, 'hitted': [False, False]}, {'pos': [9, 0], 'size': 3, 'horizontal': False, 'hitted': [False, False, False]}]
 			for d in dicts:
 				ship = Ship.fromDict(d)
-				self.placedShips.append(ship)
+				self.ships.append(ship)
 				self.shipSizes[ship.size] -= 1
 			assert self.allShipsPlaced(), 'autoplace is expected to place all ships'
 
@@ -326,11 +332,11 @@ class Grid:
 		if ship:
 			self.removeShipInCursor()
 			self.flyingShip = ship.getFlying()
-			self.placedShips.remove(ship)
+			self.ships.remove(ship)
 			self.shipSizes[ship.size] += 1
 		return bool(ship)
 	def _getClickedShip(self, mousePos):
-		for ship in self.placedShips:
+		for ship in self.ship:
 			if ship.realRect.collidepoint(mousePos):
 				return ship
 		return None
@@ -356,65 +362,55 @@ class Grid:
 				return
 		self.flyingShip.setSize(currSize)
 
-	def opponentShot(self, pos):
-		for ship in self.placedShips:
+	# shooting --------------------------------------------------
+	def localGridShotted(self, pos) -> tuple[bool, Ship]:
+		'''returns if hitted , any hitted ship'''
+		for ship in self.ships:
 			if ship.shot(pos):
-				return True
-		self.mineNotHitted[pos[1]][pos[0]] = SHOTS.NOT_HITTED
-		return False
-	def shoot(self, mousePos):
+				return True, ship
+		return False, None
+	def gotShotted(self, pos, hitted=False, sunkenShip=None):
+		'''process shot result, supplied from server for opponents grid'''
+		if self.isLocal: hitted, sunkenShip = self.localGridShotted(pos)
+		else: assert self.shots[pos[1]][pos[0]] == SHOTS.SHOTTED_UNKNOWN
+		self.shots[pos[1]][pos[0]] = [SHOTS.NOT_HITTED, SHOTS.HITTED][hitted]
+		if sunkenShip and all(sunkenShip.hitted):
+			if not self.isLocal: self.ships.append(sunkenShip)
+			self.shipSizes[sunkenShip.size] -= 1
+			self._markBlocked(sunkenShip)
+	def shoot(self, mousePos) -> Optional[list[int]]:
+		'''mouse click -> clicked grid pos if shooting location available'''
 		clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, (mousePos[1] - Constants.GRID_Y_OFFSET) // Constants.GRID_Y_SPACING
-		if self.shottedMap[clickedY][clickedX] != SHOTS.NOT_SHOTTED:
-			return False
-		self.shottedMap[clickedY][clickedX] = SHOTS.SHOTTED_UNKNOWN
+		if self.shots[clickedY][clickedX] != SHOTS.NOT_SHOTTED: return None
+		self.shots[clickedY][clickedX] = SHOTS.SHOTTED_UNKNOWN
+		if self.isLocal: self.gotShotted((clickedX, clickedY))
 		return [clickedX, clickedY]
-	def updateHitted(self, pos, hitted, wholeShip):
-		assert self.shottedMap[pos[1]][pos[0]] == SHOTS.SHOTTED_UNKNOWN
-		self.shottedMap[pos[1]][pos[0]] = [SHOTS.NOT_HITTED, SHOTS.HITTED][hitted]
-		if wholeShip:
-			ship = Ship.fromDict(wholeShip)
-			assert all(ship.hitted)
-			self.wholeHittedShips.append(ship)
-			self.markBlocked(ship)
-	def markBlocked(self, ship):
-			rect: Rect = ship.getnoShipsRect()
-			occupied: Rect = ship.getOccupiedRect()
-			rect = rect.clip(Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
-			for x in range(rect.x, rect.x + rect.width):
-				for y in range(rect.y, rect.y + rect.height):
-					if self.shottedMap[y][x] == SHOTS.NOT_SHOTTED:
-						self.shottedMap[y][x] = SHOTS.BLOCKED
-					if occupied.collidepoint((x, y)):
-						self.shottedMap[y][x] = SHOTS.HITTED_WHOLE
+	def _markBlocked(self, ship: Ship):
+		'''marks squares around sunken ship'''
+		rect: Rect = ship.getnoShipsRect()
+		occupied: Rect = ship.getOccupiedRect()
+		for x in range(rect.x, rect.x + rect.width):
+			for y in range(rect.y, rect.y + rect.height):
+				if self.shots[y][x] == SHOTS.NOT_SHOTTED:
+					self.shots[y][x] = SHOTS.BLOCKED
+				if occupied.collidepoint((x, y)):
+					self.shots[y][x] = SHOTS.HITTED_SUNKEN
 
-
-	def drawPlaced(self):
+	# drawing -----------------------------------------------
+	def drawShot(self, color, x, y):
+		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
+		Frontend.drawCircle(color, pos, Constants.GRID_X_SPACING // 4)
+	def drawShots(self):
+		colors = {SHOTS.HITTED: (255, 0, 0), SHOTS.NOT_HITTED: (11, 243, 255), SHOTS.BLOCKED: (128, 128, 128)}
+		for y, lineShotted in enumerate(self.shots):
+			for x, shot in enumerate(lineShotted):
+				if shot in colors and (not self.isLocal or shot == SHOTS.NOT_HITTED):
+					self.drawShot(colors[shot], x, y)
+	def draw(self, *, flying=False, shots=False):
 		Frontend.drawBackground()
-		for ship in self.placedShips:
-			ship.draw()
-	def drawMineNotHitted(self):
-		for y, row in enumerate(self.mineNotHitted):
-			for x, col in enumerate(row):
-				if col == SHOTS.NOT_HITTED:
-					pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
-					Frontend.drawCircle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
-	def drawFlying(self):
-		if self.flyingShip.size:
-			self.flyingShip.draw()
-	def drawShooting(self):
-		Frontend.drawBackground()
-		for y, lineShotted in enumerate(self.shottedMap):
-			for x, shotted in enumerate(lineShotted):
-				pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
-				if shotted == SHOTS.HITTED:
-					Frontend.drawCircle((255, 0, 0), pos, Constants.GRID_X_SPACING // 4)
-				elif shotted == SHOTS.NOT_HITTED:
-					Frontend.drawCircle((11, 243, 255), pos, Constants.GRID_X_SPACING // 4)
-				elif shotted == SHOTS.BLOCKED:
-					Frontend.drawCircle((128, 128, 128), pos, Constants.GRID_X_SPACING // 4)
-
-		for ship in self.wholeHittedShips:
-			ship.draw()
+		for ship in self.ships: ship.draw()
+		if shots: self.drawShots()
+		if flying and self.flyingShip.size: self.flyingShip.draw()
 
 
 class Ship:
@@ -432,6 +428,7 @@ class Ship:
 		return {'pos': self.pos, 'size': self.size, 'horizontal': self.horizontal, 'hitted': self.hitted}
 	@ classmethod
 	def fromDict(self, d: dict):
+		if d is None: return None
 		return Ship(d['pos'], d['size'], d['horizontal'], d['hitted'])
 
 	def setSize(self, size):
@@ -478,7 +475,8 @@ class Ship:
 		return segments
 
 	def getnoShipsRect(self):
-		return Rect(self.pos[0] - 1, self.pos[1] - 1,  self.widthInGrid + 2, self.heightInGrid + 2)
+		rect = Rect(self.pos[0] - 1, self.pos[1] - 1,  self.widthInGrid + 2, self.heightInGrid + 2)
+		return rect.clip(Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
 	def getOccupiedRect(self):
 		return Rect(self.pos[0], self.pos[1], self.widthInGrid, self.heightInGrid)
 	def isColliding(self, other):
