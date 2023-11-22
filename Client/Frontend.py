@@ -202,7 +202,9 @@ def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
 
 	genShipboxes(shipSizes)
 	if (onTurn := gameStage == STAGES.SHOOTING) or gameStage == STAGES.GETTING_SHOT:
+		[r.move_ip(0, -2) for r in iconRects]
 		blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
+		blit(IMG_HUD_AIM, iconRects[not onTurn], rectAttr='topright' if not onTurn else 'topleft', surf=IMG_HUD)
 	else: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 	IMG_HUD.set_colorkey(COLORKEY)
 def genBackground() -> pygame.Surface:
@@ -220,6 +222,7 @@ IMG_HEADER_CROSS_UNFOCUSED = loadImage('header_close_unfocused.png')
 IMG_HUD_READY = loadImage('HUD_ready.png')
 IMG_HUD_PLACING = loadImage('HUD_placing.png')
 IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
+IMG_HUD_AIM = loadImage('HUD_aim.png')
 IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)]
 IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
 
