@@ -224,7 +224,7 @@ class Game:
 class Options:
 	'''Class responsible for loading, holding and storing client side options,
 		such as settings and stored data'''
-	MAX_LEN = 20
+	MAX_LEN = 19
 	def __init__(self):
 		self.playerName: list[str] = []
 		self.repeatableInit()
@@ -336,7 +336,7 @@ class Grid:
 			self.shipSizes[ship.size] += 1
 		return bool(ship)
 	def _getClickedShip(self, mousePos):
-		for ship in self.ship:
+		for ship in self.ships:
 			if ship.realRect.collidepoint(mousePos):
 				return ship
 		return None
