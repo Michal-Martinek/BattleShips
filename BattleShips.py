@@ -44,12 +44,12 @@ def game():
 					game.changeShipSize(-1)
 			elif event.type == pygame.MOUSEBUTTONUP:
 				if event.button == 1:
-					Frontend.windowGrabbedPos = None
+					Frontend.Runtime.windowGrabbedPos = None
 			elif event.type == pygame.MOUSEMOTION:
 				game.mouseMovement(event)
 			elif event.type in [pygame.WINDOWFOCUSGAINED, pygame.WINDOWFOCUSLOST, pygame.WINDOWRESTORED]:
-				Frontend.windowHasFocus = event.type != pygame.WINDOWFOCUSLOST
-				if not Frontend.windowHasFocus: game.options.inputActive = False
+				Frontend.Runtime.windowHasFocus = event.type != pygame.WINDOWFOCUSLOST
+				if not Frontend.Runtime.windowHasFocus: game.options.inputActive = False
 				game.redrawNeeded = True
 
 		game.handleRequests()

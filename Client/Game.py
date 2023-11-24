@@ -141,8 +141,10 @@ class Game:
 		elif Frontend.grabWindow(mousePos):
 			self.options.inputActive = False
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU: self.options.mouseClick(mousePos)
-		elif not rightClick and Frontend.HUDCollide(mousePos, True):
+		elif not rightClick and Frontend.HUDReadyCollide(mousePos, True):
 			self.toggleGameReady()
+		elif not rightClick and (size := Frontend.HUDShipboxCollide(mousePos, True)):
+			self.grid.changeSize(+1, canBeSame=True, currSize=size)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed: self.redrawHUD()
@@ -150,7 +152,7 @@ class Game:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
 		if Frontend.Runtime.windowGrabbedPos: Frontend.moveWindow(event.pos)
-		elif Frontend.HUDCollide(event.pos): self.redrawHUD()
+		elif Frontend.HUDReadyCollide(event.pos) or Frontend.HUDShipboxCollide(event.pos): self.redrawHUD()
 		elif Frontend.headerBtnCollide(event.pos) or self.grid.flyingShip.size: self.redrawNeeded = True
 	def keydownInMenu(self, event):
 		self.redrawNeeded = True

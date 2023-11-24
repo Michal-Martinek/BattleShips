@@ -46,6 +46,8 @@ class _Runtime:
 	windowHasFocus = True
 	readyBtnHovered = False
 	readyBtnRect: pygame.Rect = None # NOTE: Rect only if btn hoverable
+	shipboxRects: dict[int, pygame.Rect] = None
+	shipboxHovered: set[int] = None
 
 	def __init__(self):
 		self.display = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
@@ -53,6 +55,8 @@ class _Runtime:
 		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
 		pygame.display.set_caption('Battleships')
 		pygame.display.set_icon(loadImage('BattleShips.ico'))
+		self.shipboxRects = dict()
+		self.shipboxHovered = set()
 
 Runtime = _Runtime()
 
@@ -128,7 +132,18 @@ def headerBtnCollide(mousePos) -> bool:
 	changed = Runtime.headerMinimizeActive ^ minColl or Runtime.headerCloseActive ^ closeColl 
 	Runtime.headerMinimizeActive, Runtime.headerCloseActive = minColl, closeColl
 	return changed
-def HUDCollide(mousePos, click=False) -> bool:
+def HUDShipboxCollide(mousePos, click=False):
+	'''@return - on mouse movement - if changed, on click - shipbox size)'''
+	oldHovered = Runtime.shipboxHovered.copy()
+	Runtime.shipboxHovered = set()
+	changed = False
+	for size, rect in Runtime.shipboxRects.items():
+		hover = rect.collidepoint(mousePos)
+		if hover: Runtime.shipboxHovered.add(size)
+		changed |= hover ^ (size in oldHovered)
+		if hover and click: return size
+	return changed
+def HUDReadyCollide(mousePos, click=False) -> bool:
 	if Runtime.readyBtnRect is None: return False
 	readyHover = Runtime.readyBtnRect.collidepoint(mousePos)
 	changed = Runtime.readyBtnHovered ^ readyHover
@@ -213,10 +228,14 @@ def genReadyBtn(iconRect: pygame.Rect, gameWait: bool, allShipsPlaced: bool):
 	if not allShipsPlaced: return
 	Runtime.readyBtnRect = rect.move(0, Constants.HEADER_HEIGHT - Runtime.readyBtnHovered * 3) # match rect of hovered and normal button
 	Runtime.readyBtnRect.h += Runtime.readyBtnHovered * 3
-def genShipboxes(shipSizes: dict[int, int]):
+def genShipboxes(shipSizes: dict[int, int], gameStage: STAGES):
+	Runtime.shipboxRects = dict()
 	for size, rect in enumerate(Constants.HUD_SHIPBOX_RECTS, 1):
-		blit(IMG_HUD_SHIPBOXES[size-1], rect, rectAttr='topright', surf=IMG_HUD)
+		r = blit(IMG_HUD_SHIPBOXES[size-1], rect, rectAttr='topright', surf=IMG_HUD)
 		remaining = shipSizes[size]
+		if size in Runtime.shipboxHovered:
+			blit(IMG_HUD_SHIPBOXES[4], rect, rectAttr='topright', surf=IMG_HUD)
+		if gameStage == STAGES.PLACING and remaining: Runtime.shipboxRects[size] = r.move(0, Constants.HEADER_HEIGHT)
 		if size == 4 and remaining == 1: continue
 		blit(IMG_HUD_SHIPBOX_COUNTS[remaining], rect, rectAttr='topright', surf=IMG_HUD)
 def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
@@ -228,7 +247,7 @@ def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
 	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
 	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 
-	genShipboxes(shipSizes)
+	genShipboxes(shipSizes, gameStage)
 	if (onTurn := gameStage == STAGES.SHOOTING) or gameStage == STAGES.GETTING_SHOT:
 		[r.move_ip(0, -2) for r in iconRects]
 		blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
@@ -255,7 +274,7 @@ IMG_HUD_PLACING = loadImage('HUD_placing.png')
 IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
 IMG_HUD_AIM = loadImage('HUD_aim.png')
 IMG_HUD_READY_BTNS = [[loadImage('Buttons', f'ready_btn_{color}{hover}.png') for hover in ('', '_hover')] for color in ('red', 'green')] + [loadImage('Buttons', f'ready_btn_unavail.png')]
-IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)]
+IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)] + [loadImage('Shipboxes', 'shipbox_hovered.png')]
 IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
 
 IMG_HEADER = genHeader()
