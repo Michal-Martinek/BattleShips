@@ -40,6 +40,8 @@ windowGrabbedPos: list[int, int] = None
 headerMinimizeActive = False
 headerCloseActive = False
 windowHasFocus = True
+readyBtnHovered = False
+readyBtnRect = None
 
 # ship frame generation --------------------------------------------------
 SHIP_FRAMES: dict[str, pygame.Surface] = dict()
@@ -115,6 +117,13 @@ def headerBtnCollide(mousePos) -> bool:
 	changed = headerMinimizeActive ^ minColl or headerCloseActive ^ closeColl 
 	headerMinimizeActive, headerCloseActive = minColl, closeColl
 	return changed
+def HUDCollide(mousePos) -> bool:
+	global readyBtnHovered
+	if readyBtnRect is None: return False
+	readyHover = readyBtnRect.collidepoint(mousePos)
+	changed = readyBtnHovered ^ readyHover
+	readyBtnHovered = readyHover
+	return changed
 
 def drawHeader():
 	display.blit(IMG_HEADER, (0, 0))
@@ -160,6 +169,7 @@ def render(font: pygame.font.Font, rect, text: str, textColor=(0, 0, 0), backgro
 	drawRect(boxRect, backgroundColor, boundaryColor, boundaryWidth, boundaryPadding, surf, **rectKwargs)
 	return blit(label, labelRect, area=labelArea, surf=surf)
 def blit(img: pygame.Surface, rect, *, rectAttr='topleft', area: pygame.Rect=None, surf=display) -> pygame.Rect:
+	if isinstance(rect, tuple): rect = pygame.Rect(*rect, 0, 0)
 	r = img.get_rect()
 	setattr(r, rectAttr, getattr(rect, rectAttr))
 	return surf.blit(img, r, area)
@@ -192,6 +202,7 @@ def genShipboxes(shipSizes: dict[int, int]):
 		if size == 4 and remaining == 1: continue
 		blit(IMG_HUD_SHIPBOX_COUNTS[remaining], rect, rectAttr='topright', surf=IMG_HUD)
 def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
+	global readyBtnRect
 	IMG_HUD.fill(COLORKEY)
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
@@ -206,6 +217,12 @@ def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
 		blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
 		blit(IMG_HUD_AIM, iconRects[not onTurn], rectAttr='topright' if not onTurn else 'topleft', surf=IMG_HUD)
 	else: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
+
+	readyBtnPos = iconRects[0].x + Constants.HUD_READY_BTN_DEFAULTS[0], Constants.HUD_READY_BTN_DEFAULTS[1]
+	readyBtnRect = blit(IMG_HUD_READY_BTNS[gameStage == STAGES.GAME_WAIT][readyBtnHovered], readyBtnPos, rectAttr='bottomleft', surf=IMG_HUD)
+	readyBtnRect.move_ip(0, Constants.HEADER_HEIGHT - readyBtnHovered * 3)
+	readyBtnRect.h += readyBtnHovered * 3
+
 	IMG_HUD.set_colorkey(COLORKEY)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')
@@ -213,7 +230,7 @@ def genBackground() -> pygame.Surface:
 	surf.fill((0, 0, 255))
 	for y in range(1, Constants.GRID_HEIGHT):
 		for x in range(1, Constants.GRID_WIDTH):
-			blit(cross, pygame.Rect(x * Constants.GRID_X_SPACING, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT, 0, 0), rectAttr='center', surf=surf)
+			blit(cross, (x * Constants.GRID_X_SPACING, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT), rectAttr='center', surf=surf)
 	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (0, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, 0)])
 	return surf
 
@@ -223,6 +240,7 @@ IMG_HUD_READY = loadImage('HUD_ready.png')
 IMG_HUD_PLACING = loadImage('HUD_placing.png')
 IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
 IMG_HUD_AIM = loadImage('HUD_aim.png')
+IMG_HUD_READY_BTNS = [[loadImage('Buttons', f'ready_btn_{color}{hover}.png') for hover in ('', '_hover')] for color in ('red', 'green')]
 IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)]
 IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
 
