@@ -28,7 +28,7 @@ class Game:
 		assert STAGES.COUNT == 12
 		assert stage != self.gameStage
 		self.gameStage = stage
-		Frontend.readyBtnRect = None
+		Frontend.Runtime.readyBtnRect = None
 		if self.gameStage == STAGES.MAIN_MENU:
 			self.repeatableInit()
 		elif self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
@@ -141,7 +141,7 @@ class Game:
 		elif Frontend.grabWindow(mousePos):
 			self.options.inputActive = False
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU: self.options.mouseClick(mousePos)
-		elif not rightClick and Frontend.readyBtnRect and Frontend.readyBtnRect.collidepoint(mousePos):
+		elif not rightClick and Frontend.HUDCollide(mousePos, True):
 			self.toggleGameReady()
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
@@ -149,7 +149,7 @@ class Game:
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
-		if Frontend.windowGrabbedPos: Frontend.moveWindow(event.pos)
+		if Frontend.Runtime.windowGrabbedPos: Frontend.moveWindow(event.pos)
 		elif Frontend.HUDCollide(event.pos): self.redrawHUD()
 		elif Frontend.headerBtnCollide(event.pos) or self.grid.flyingShip.size: self.redrawNeeded = True
 	def keydownInMenu(self, event):

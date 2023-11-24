@@ -1,5 +1,6 @@
 import os
 import logging, traceback
+from dataclasses import dataclass
 import pygame
 from . import Constants
 from Shared.Enums import STAGES
@@ -34,17 +35,26 @@ def loadImage(*paths) -> pygame.Surface:
 	return img
 
 # runtime ---------------------------------------------------------------
-display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
-pygame.display.set_caption('Battleships')
-pygame.display.set_icon(loadImage('BattleShips.ico'))
-SDLwindow = Window.from_display_module()
-SDLwindow.position = (SDLwindow.position[0], 6)
-windowGrabbedPos: list[int, int] = None
-headerMinimizeActive = False
-headerCloseActive = False
-windowHasFocus = True
-readyBtnHovered = False
-readyBtnRect: pygame.Rect = None # NOTE: Rect only if btn hoverable
+@dataclass
+class _Runtime:
+	'''holds Frontend related runtime variables'''
+	display: pygame.Surface
+	SDLwindow: Window
+	windowGrabbedPos: list[int, int] = None
+	headerMinimizeActive = False
+	headerCloseActive = False
+	windowHasFocus = True
+	readyBtnHovered = False
+	readyBtnRect: pygame.Rect = None # NOTE: Rect only if btn hoverable
+
+	def __init__(self):
+		self.display = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
+		self.SDLwindow = Window.from_display_module()
+		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
+		pygame.display.set_caption('Battleships')
+		pygame.display.set_icon(loadImage('BattleShips.ico'))
+
+Runtime = _Runtime()
 
 # ship frame generation --------------------------------------------------
 SHIP_FRAMES: dict[str, pygame.Surface] = dict()
@@ -108,43 +118,40 @@ def getFrame(size: int, horizontal: bool, hitted: list[bool], frame: int) -> pyg
 
 # interface ------------------------------------------------------------
 def grabWindow(mousePos):
-	global windowGrabbedPos
 	if mousePos[1] <= Constants.HEADER_HEIGHT:
-		windowGrabbedPos = list(mousePos)
+		Runtime.windowGrabbedPos = list(mousePos)
 		return True
 def moveWindow(mousePos):
-	SDLwindow.position = SDLwindow.position[0] - windowGrabbedPos[0] + mousePos[0], SDLwindow.position[1] - windowGrabbedPos[1] + mousePos[1]
+	Runtime.SDLwindow.position = Runtime.SDLwindow.position[0] - Runtime.windowGrabbedPos[0] + mousePos[0], Runtime.SDLwindow.position[1] - Runtime.windowGrabbedPos[1] + mousePos[1]
 def headerBtnCollide(mousePos) -> bool:
-	global headerMinimizeActive, headerCloseActive
 	minColl, closeColl = Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos), Constants.HEADER_CLOSE_RECT.collidepoint(mousePos)
-	changed = headerMinimizeActive ^ minColl or headerCloseActive ^ closeColl 
-	headerMinimizeActive, headerCloseActive = minColl, closeColl
+	changed = Runtime.headerMinimizeActive ^ minColl or Runtime.headerCloseActive ^ closeColl 
+	Runtime.headerMinimizeActive, Runtime.headerCloseActive = minColl, closeColl
 	return changed
-def HUDCollide(mousePos) -> bool:
-	global readyBtnHovered
-	if readyBtnRect is None: return False
-	readyHover = readyBtnRect.collidepoint(mousePos)
-	changed = readyBtnHovered ^ readyHover
-	readyBtnHovered = readyHover
-	return changed
+def HUDCollide(mousePos, click=False) -> bool:
+	if Runtime.readyBtnRect is None: return False
+	readyHover = Runtime.readyBtnRect.collidepoint(mousePos)
+	changed = Runtime.readyBtnHovered ^ readyHover
+	Runtime.readyBtnHovered = readyHover
+	return changed or (click and readyHover)
 
 def drawHeader():
-	display.blit(IMG_HEADER, (0, 0))
-	render(FONT_ARIAL17, Constants.HEADER_NAME_POS, 'Battleships', (255, 255, 255) if windowHasFocus else (160, 160, 160), fitMode='midleft', antialias=False)
-	headerMinimizeActive = Constants.HEADER_MINIMIZE_RECT.collidepoint(pygame.mouse.get_pos())
-	if windowHasFocus and headerMinimizeActive:
-		pygame.draw.rect(display, (140, 140, 140), Constants.HEADER_MINIMIZE_RECT)
-	pygame.draw.line(display, (255, 255, 255) if windowHasFocus else (160, 160, 160), *Constants.HEADER_MINIMIZE_LINE, 3)
+	Runtime.display.blit(IMG_HEADER, (0, 0))
+	render(FONT_ARIAL17, Constants.HEADER_NAME_POS, 'Battleships', (255, 255, 255) if Runtime.windowHasFocus else (160, 160, 160), fitMode='midleft', antialias=False)
+	Runtime.headerMinimizeActive = Constants.HEADER_MINIMIZE_RECT.collidepoint(pygame.mouse.get_pos())
+	if Runtime.windowHasFocus and Runtime.headerMinimizeActive:
+		pygame.draw.rect(Runtime.display, (140, 140, 140), Constants.HEADER_MINIMIZE_RECT)
+	pygame.draw.line(Runtime.display, (255, 255, 255) if Runtime.windowHasFocus else (160, 160, 160), *Constants.HEADER_MINIMIZE_LINE, 3)
 
-	headerCloseActive = Constants.HEADER_CLOSE_RECT.collidepoint(pygame.mouse.get_pos())
-	if windowHasFocus and headerCloseActive:
-		pygame.draw.rect(display, (255, 0, 0), Constants.HEADER_CLOSE_RECT)
-	display.blit(IMG_HEADER_CROSS if windowHasFocus else IMG_HEADER_CROSS_UNFOCUSED, Constants.HEADER_CLOSE_RECT)
+	Runtime.headerCloseActive = Constants.HEADER_CLOSE_RECT.collidepoint(pygame.mouse.get_pos())
+	if Runtime.windowHasFocus and Runtime.headerCloseActive:
+		pygame.draw.rect(Runtime.display, (255, 0, 0), Constants.HEADER_CLOSE_RECT)
+	Runtime.display.blit(IMG_HEADER_CROSS if Runtime.windowHasFocus else IMG_HEADER_CROSS_UNFOCUSED, Constants.HEADER_CLOSE_RECT)
 def drawHUD():
 	assert IMG_HUD is not None
-	display.blit(IMG_HUD, Constants.HUD_RECT)
+	Runtime.display.blit(IMG_HUD, Constants.HUD_RECT)
 def drawBackground():
-	display.blit(IMG_BACKGROUND, (0, Constants.HEADER_HEIGHT))
+	Runtime.display.blit(IMG_BACKGROUND, (0, Constants.HEADER_HEIGHT))
 
 def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding, fitMode='topleft') -> tuple[pygame.Rect, pygame.Rect, pygame.Rect]:
 	'''@return: box rect (unpadded), label blit loc, blit area on the label'''
@@ -159,7 +166,7 @@ def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding, fitMode='topleft
 	boxRect = pygame.Rect(0, 0, *labelDims.bottomright)
 	setattr(boxRect, fitMode, rect)
 	return boxRect, boxRect.copy(), labelDims
-def render(font: pygame.font.Font, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, *, surf=display, fitMode='topleft', antialias=True, **rectKwargs) -> pygame.Rect:
+def render(font: pygame.font.Font, rect, text: str, textColor=(0, 0, 0), backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, *, surf=Runtime.display, fitMode='topleft', antialias=True, **rectKwargs) -> pygame.Rect:
 	'''
 	Draws text, optionally inside rect
 	@rect: (x, y) -> @fitMode of text
@@ -171,20 +178,20 @@ def render(font: pygame.font.Font, rect, text: str, textColor=(0, 0, 0), backgro
 	boxRect, labelRect, labelArea = _convertRect(rect, label.get_rect(), boundaryPadding, fitMode)
 	drawRect(boxRect, backgroundColor, boundaryColor, boundaryWidth, boundaryPadding, surf, **rectKwargs)
 	return blit(label, labelRect, area=labelArea, surf=surf)
-def blit(img: pygame.Surface, rect, *, rectAttr='topleft', area: pygame.Rect=None, surf=display) -> pygame.Rect:
+def blit(img: pygame.Surface, rect, *, rectAttr='topleft', area: pygame.Rect=None, surf=Runtime.display) -> pygame.Rect:
 	if isinstance(rect, tuple): rect = pygame.Rect(*rect, 0, 0)
 	r = img.get_rect()
 	setattr(r, rectAttr, getattr(rect, rectAttr))
 	return surf.blit(img, r, area)
 def fillColor(color):
-	display.fill(color)
-def drawRect(rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, surf=display, **rectArgs):
+	Runtime.display.fill(color)
+def drawRect(rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, surf=Runtime.display, **rectArgs):
 	if isinstance(rect, tuple): rect = pygame.Rect(*rect)
 	rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
 	if backgroundColor: pygame.draw.rect(surf, backgroundColor, rect, **rectArgs)
 	if boundaryColor: pygame.draw.rect(surf, boundaryColor, rect, boundaryWidth, **rectArgs)
 def drawCircle(color, pos, size):
-	pygame.draw.circle(display, color, pos, size)
+	pygame.draw.circle(Runtime.display, color, pos, size)
 
 def update():
 	pygame.display.update()
@@ -199,14 +206,13 @@ def genHeader() -> pygame.Surface:
 	surf.blit(loadImage('BattleShips.ico'), (0, 0))
 	return surf
 def genReadyBtn(iconRect: pygame.Rect, gameWait: bool, allShipsPlaced: bool):
-	global readyBtnRect
 	readyBtnPos = iconRect.x + Constants.HUD_READY_BTN_DEFAULTS[0], Constants.HUD_READY_BTN_DEFAULTS[1]
-	img = IMG_HUD_READY_BTNS[gameWait][readyBtnHovered] if allShipsPlaced else IMG_HUD_READY_BTNS[2]
+	img = IMG_HUD_READY_BTNS[gameWait][Runtime.readyBtnHovered] if allShipsPlaced else IMG_HUD_READY_BTNS[2]
 	rect = blit(img, readyBtnPos, rectAttr='bottomleft', surf=IMG_HUD)
-	readyBtnRect = None
+	Runtime.readyBtnRect = None
 	if not allShipsPlaced: return
-	readyBtnRect = rect.move(0, Constants.HEADER_HEIGHT - readyBtnHovered * 3) # match rect of hovered and normal button
-	readyBtnRect.h += readyBtnHovered * 3
+	Runtime.readyBtnRect = rect.move(0, Constants.HEADER_HEIGHT - Runtime.readyBtnHovered * 3) # match rect of hovered and normal button
+	Runtime.readyBtnRect.h += Runtime.readyBtnHovered * 3
 def genShipboxes(shipSizes: dict[int, int]):
 	for size, rect in enumerate(Constants.HUD_SHIPBOX_RECTS, 1):
 		blit(IMG_HUD_SHIPBOXES[size-1], rect, rectAttr='topright', surf=IMG_HUD)
