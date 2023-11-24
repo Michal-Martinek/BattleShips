@@ -17,6 +17,7 @@ pygame.draw.rect(IMG_ERR, (118, 205, 226), (5, 4, 25, 8))
 pygame.draw.rect(IMG_ERR, (118, 205, 226), (5, 17, 25, 9))
 
 FONT_ARIAL_MIDDLE = pygame.font.SysFont('arial', 40)
+FONT_ARIAL_MSGS = pygame.font.SysFont('arial', 30)
 FONT_ARIAL_BIG = pygame.font.SysFont('arial', 60)
 FONT_ARIAL_PLAYERNAME = pygame.font.SysFont('arial', 22)
 FONT_ARIAL_SMALL = pygame.font.SysFont('arial', 20)
@@ -34,6 +35,8 @@ def loadImage(*paths) -> pygame.Surface:
 
 # runtime ---------------------------------------------------------------
 display: pygame.Surface = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
+pygame.display.set_caption('Battleships')
+pygame.display.set_icon(loadImage('BattleShips.ico'))
 SDLwindow = Window.from_display_module()
 SDLwindow.position = (SDLwindow.position[0], 6)
 windowGrabbedPos: list[int, int] = None

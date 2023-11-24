@@ -190,7 +190,8 @@ class Game:
 			self.grid.draw(flying=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.draw()
-			Frontend.render(Frontend.FONT_ARIAL_MIDDLE, (25, 200), 'Waiting for the other player to place ships...', (0, 0, 0), (255, 255, 255), (0, 0, 0), 5, 5)
+			text = f" Waiting for opponent.{'.' * Ship.animationStage:<2}"
+			Frontend.render(Frontend.FONT_ARIAL_MSGS, Constants.HUD_RECT.midbottom, text, (255, 255, 255), (40, 40, 40), (255, 255, 255), 2, 8, fitMode='midtop', border_bottom_left_radius=10, border_bottom_right_radius=10)
 		elif self.gameStage == STAGES.SHOOTING:
 			self.opponentGrid.draw(shots=True)
 		elif self.gameStage == STAGES.GETTING_SHOT:
