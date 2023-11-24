@@ -13,13 +13,13 @@ class Game:
 		self.session = Session()
 		self.options = Options()
 		self.redrawNeeded = True
+		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.repeatableInit()
 		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
 			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self):
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
-		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.options.repeatableInit()
 	def quit(self):
 		logging.info('Closing due to client quit')
@@ -100,6 +100,7 @@ class Game:
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.WON, STAGES.LOST]:
 			if '--autoplay-repeat' in sys.argv and not self.session.connected and not any(self.session.alreadySent.values()):
 				logging.debug('Autoplay repeat')
+				self.repeatableInit()
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
@@ -299,8 +300,9 @@ class Grid:
 		@return - if anything changed'''
 		if self.flyingShip.size == 0 or rightClick:
 			return self.pickUpShip(mousePos)
-		else:
+		elif mousePos[1] >= Constants.GRID_Y_OFFSET:
 			return self.placeShip()
+		return False
 	def canPlaceShip(self, placed):
 		gridRect = Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT)
 		if not gridRect.contains(placed.getOccupiedRect()):
@@ -381,6 +383,7 @@ class Grid:
 			self._markBlocked(sunkenShip)
 	def shoot(self, mousePos) -> Optional[list[int]]:
 		'''mouse click -> clicked grid pos if shooting location available'''
+		if mousePos[1] < Constants.GRID_Y_OFFSET: return None
 		clickedX, clickedY = mousePos[0] // Constants.GRID_X_SPACING, (mousePos[1] - Constants.GRID_Y_OFFSET) // Constants.GRID_Y_SPACING
 		if self.shots[clickedY][clickedX] != SHOTS.NOT_SHOTTED: return None
 		self.shots[clickedY][clickedX] = SHOTS.SHOTTED_UNKNOWN
