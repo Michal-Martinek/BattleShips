@@ -28,6 +28,7 @@ class Game:
 		assert STAGES.COUNT == 12
 		assert stage != self.gameStage
 		self.gameStage = stage
+		Frontend.readyBtnRect = None
 		if self.gameStage == STAGES.MAIN_MENU:
 			self.repeatableInit()
 		elif self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
@@ -39,7 +40,7 @@ class Game:
 			if '--autoplace' in sys.argv:
 				self.grid.autoplace()
 				self.toggleGameReady()
-		elif self.gameStage in [STAGES.SHOOTING, STAGES.GETTING_SHOT]:
+		elif self.gameStage in [STAGES.GAME_WAIT, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
 			self.redrawHUD()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
@@ -138,13 +139,12 @@ class Game:
 			pygame.display.iconify()
 		elif Frontend.grabWindow(mousePos):
 			self.options.inputActive = False
-			self.grid.removeShipInCursor()
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU: self.options.mouseClick(mousePos)
+		elif not rightClick and Frontend.readyBtnRect and Frontend.readyBtnRect.collidepoint(mousePos):
+			self.toggleGameReady()
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
-			if changed:
-				self.toggleGameReady()
-				self.redrawHUD()
+			if changed: self.redrawHUD()
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
