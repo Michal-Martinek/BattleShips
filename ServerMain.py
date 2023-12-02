@@ -37,25 +37,26 @@ class Request:
 	command: COM
 	payload: dict
 	stayConnected: bool = True
-@ dataclass
-class BlockingRequest:
-	req: Request
+	gameEndMsg: str = ''
+
+	def setNotStayConnected(self, msg):
+		self.stayConnected = False
+		self.gameEndMsg = msg
+
+class BlockingRequest(Request):
 	player: ConnectedPlayer
 	timeRecvd: float
 	defaultResponse: dict
-	@ property
-	def command(self):
-		return self.req.command
-	@ property
-	def stayConnected(self):
-		return self.req.stayConnected
-	@ stayConnected.setter
-	def stayConnected(self, val):
-		self.req.stayConnected = val
+
+	def __init__(self, req: Request, player: ConnectedPlayer, timeRecvd: float, defaultResponse: dict):
+		super().__init__(req.conn, req.playerId, req.command, req.payload, req.stayConnected)
+		self.player = player
+		self.timeRecvd = timeRecvd
+		self.defaultResponse = defaultResponse
 
 # error helpers -------------------------------------------
-class FailedAsertionError(AssertionError):
-	'''Signalizes failed assertion to communicate the need to ignore the req'''
+class PlayerDisconnectIssued(AssertionError):
+	'''Raised on sending a response without stayConnected=False to demand player disconnect'''
 	pass
 def sendErrorResponse(req: Request, error: str, obj=None): # NOTE doesn't accept BlockingRequest
 	obj = '' if obj is None else str(obj)
@@ -68,7 +69,7 @@ def asert(cond, req, msg, obj=None):
 	log = f"{msg}: '{obj}'" if obj is not None else msg
 	logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: ID{req.playerId} {log}")
 	sendErrorResponse(req, msg, obj)
-	raise FailedAsertionError(log)
+	raise PlayerDisconnectIssued(log)
 
 # impl classes ----------------------------------------------------------
 class Game:
@@ -123,7 +124,7 @@ class Game:
 		@return (list[int] - where opponent shotted, bool - if you lost'''
 		pos = self.shottedPos
 		self.swapTurn()
-		return pos, self.gameStage == STAGES.WON
+		return pos, self.gameStage == STAGES.GAME_END
 	def didOpponentShoot(self, player) -> bool:
 		return self.shottedPos != [-1, -1] and player.id != self.playerOnTurn
 	def shoot(self, player, pos) -> tuple[bool, dict, bool]:
@@ -210,8 +211,8 @@ class Server:
 				self.handleIncomingReq(req)
 			except queue.Empty:
 				pass
-			except FailedAsertionError:
-				pass
+			except PlayerDisconnectIssued:
+				self.disconnectPlayer(req.playerId)
 			finally:
 				self.checkWaitingReqs()
 	def handleIncomingReq(self, req: Request):
@@ -222,12 +223,11 @@ class Server:
 		asert(player.connected, req, 'player marked as disconnected')
 		if player.id in self.blockingReqs:
 			logging.debug(f'Responding with default due to another req from {player.id}')
-			self.respondBlockingReq(player, useDefault=True)
+			self.respondBlockingReq(player, useDefault=True, disconnect=False)
 
 		if req.command == COM.DISCONNECT:
-			req.stayConnected = False
+			req.setNotStayConnected('You disconnected!')
 			self._sendResponse(req)
-			self.disconnectPlayer(player)
 		elif req.command == COM.PAIR:
 			self.pairPlayer(player, req)
 		elif req.command == COM.CONNECTION_CHECK:
@@ -235,7 +235,7 @@ class Server:
 		else:
 			asert(player.gameId in self.games, req, 'unknown game id', player.gameId)
 			game = self.games[player.gameId]
-			req.stayConnected = game.gameActive
+			if not game.gameActive: req.setNotStayConnected('Opponent disconnected!   :|')
 
 			if req.command == COM.OPPONENT_READY:
 				self.handleOpponentReady(player, game, req)
@@ -254,18 +254,19 @@ class Server:
 	def checkConnections(self):
 		for player in list(self.players.values()):
 			if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
-				if player.connected:
-					logging.warning(f'disconnecting player {player.id} due to not receiving requests')
-					self.disconnectPlayer(player)
+				logging.warning(f'disconnecting player {player.id} due to not receiving requests')
+				if player.id in self.blockingReqs:
+					self.blockingReqs[player.id].setNotStayConnected('Connection timed out')
+					self.respondBlockingReq(player, useDefault=True)
+				else: self.disconnectPlayer(player.id)
 
-	def disconnectPlayer(self, player: ConnectedPlayer):
+	def disconnectPlayer(self, playerId: int):
+		if playerId not in self.players: return
+		player = self.players[playerId]
 		if player.inGame:
 			game = self.games[player.gameId]
 			game.playerDisconnect(player)
 		else:
-			if player.id in self.blockingReqs:
-				self.blockingReqs[player.id].req.stayConnected = False
-				self.respondBlockingReq(player, {})
 			player.disconnect()
 			self.removePlayer(player)
 	def removePlayer(self, player: ConnectedPlayer):
@@ -286,18 +287,24 @@ class Server:
 		assert player.id not in self.blockingReqs, 'only one blocking req per player'
 		logging.debug(f'adding blocking request {req.command}')
 		self.blockingReqs[player.id] = BlockingRequest(req, player, time.time(), defaultResponse)
-	def respondBlockingReq(self, player: ConnectedPlayer, payload: dict={}, *, useDefault=False):
-		'''sends response for blocking req for this player
-		, if 'useDefault' it sends the default response in the 'BlockingRequest',
-		otherwise it sends supplied response'''
+	def respondBlockingReq(self, player: ConnectedPlayer, payload: dict={}, *, useDefault=False, disconnect=None):
+		'''
+		sends response for blocking req for this player
+		@useDefault: whether to send default response in the BlockingRequest
+		@disconnect: disconnect on PlayerDisconnectIssued from _sendResponse()?, when None 'useDefault' is used
+		'''
 		req = self.blockingReqs.pop(player.id)
-		self._sendResponse(req, req.defaultResponse if useDefault else payload)
+		try:
+			self._sendResponse(req, req.defaultResponse if useDefault else payload)
+		except PlayerDisconnectIssued:
+			if disconnect or (disconnect is None and useDefault): self.disconnectPlayer(player.id)
+			else: raise
 
 	def _isPlayerPairableWith(self, player: ConnectedPlayer, possibleOpponent: ConnectedPlayer):
 		return not possibleOpponent.inGame and possibleOpponent.id != player.id
 	def findOpponent(self, player: ConnectedPlayer) -> Optional[ConnectedPlayer]:
 		for req in self.blockingReqs.values(): # primarily try to find a opponent from the waiting reqs
-			if req.req.command == COM.PAIR and self._isPlayerPairableWith(player, req.player):
+			if req.command == COM.PAIR and self._isPlayerPairableWith(player, req.player):
 				return req.player
 		possible = list(filter(lambda p: self._isPlayerPairableWith(player, p), self.players.values()))
 		if len(possible) == 0: return None
@@ -347,8 +354,8 @@ class Server:
 		asert(player.id == game.playerOnTurn, req, 'only player on turn can shoot')
 		hitted, sunkenShip, gameWon = game.shoot(player, req.payload['pos'])
 		if gameWon:
-			game.gameStage = STAGES.WON
-			req.stayConnected = False
+			game.gameStage = STAGES.GAME_END
+			req.setNotStayConnected('You won!   :)')
 			logging.info(f'Game {game.id} won {player.id}')
 		opponent = game.getOpponent(player)
 		if opponent.id in self.blockingReqs:
@@ -365,12 +372,12 @@ class Server:
 		pos, lost = game.opponentShottedReq(player)
 		payload = {'shotted': True, 'pos': pos, 'lost': lost}
 		if lost:
-			req.stayConnected = False
-		if isinstance(req, Request):
-			self._sendResponse(req, payload)
+			req.setNotStayConnected('You lost!   :(')
+		if isinstance(req, BlockingRequest):
+			assert player.id in self.blockingReqs
+			self.respondBlockingReq(player, payload, disconnect=True)
 		else:
-			assert isinstance(req, BlockingRequest) and player.id in self.blockingReqs
-			self.respondBlockingReq(player, payload)
+			self._sendResponse(req, payload)
 	def checkWaitingReqs(self):
 		for req in list(self.blockingReqs.values()):
 			if time.time() - req.timeRecvd > MAX_TIME_FOR_BLOCKING or self.closeEvent.is_set():
@@ -378,7 +385,7 @@ class Server:
 			elif req.player.inGame:
 				game = self.games[req.player.gameId]
 				if not game.gameActive:
-					req.stayConnected = False
+					req.setNotStayConnected('Opponent disconnected!   :|')
 					self.respondBlockingReq(req.player, useDefault=True)
 
 	def newConnectedPlayer(self, playerName):
@@ -401,12 +408,12 @@ class Server:
 		req = Request(conn, id, command, payload)
 		return req
 	def _sendResponse(self, req: Union[Request, BlockingRequest], payload: dict={}):
-		if isinstance(req, BlockingRequest):
-			req = req.req
 		payload.update({'stay_connected': req.stayConnected and not self.closeEvent.is_set()})
+		if not payload['stay_connected']: payload.update({'game_end_msg': 'Server is closing!' if self.closeEvent.is_set() else req.gameEndMsg})
 		assert req.playerId != 0
 		ConnectionPrimitives.send(req.conn, req.playerId, req.command, payload)
 		req.conn.close()
+		if not payload['stay_connected']: raise PlayerDisconnectIssued(payload['game_end_msg'])
 
 
 def serverMain():

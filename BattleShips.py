@@ -22,10 +22,10 @@ def game():
 			elif event.type == pygame.USEREVENT:
 				game.advanceAnimations()
 			elif event.type == pygame.KEYDOWN:
-				assert STAGES.COUNT == 12
+				assert STAGES.COUNT == 11
 				if game.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU]:
 					game.keydownInMenu(event)
-				elif game.gameStage in [STAGES.WON, STAGES.LOST]:
+				elif game.gameStage == STAGES.GAME_END:
 					game.newGameStage(STAGES.MAIN_MENU)
 				elif event.key == pygame.K_r:
 					game.rotateShip()

@@ -66,18 +66,22 @@ class Session:
 			raise RuntimeError("Request specified with 'mustSent' could not be sent due to request being already sent")
 		return sent
 
-	def loadResponses(self, *, _drain=False) -> bool:
+	def loadResponses(self, *, _drain=False) -> str:
 		'''gets all available responses and calls callbacks
-		the parameter '_drain' should only be used internally'''
+		the parameter '_drain' should only be used internally
+		@return: game end msg supplied from server'''
 		if self.quitNowEvent.is_set(): return False
 		self.checkThreads()
 		stayConnected = True
+		gameEndMsg = ''
 		for req in iterQueue(self.responseQueue):
-			stayConnected = stayConnected and req.payload['stay_connected']
+			stayConnected &= req.payload['stay_connected']
+			if not req.payload['stay_connected']: gameEndMsg = req.payload['game_end_msg']
 			if not _drain: req.callback(req.payload)
 			self.resetAlreadySent(req.command)
 			self.reqQueue.task_done()
-		return stayConnected
+		self.connected &= stayConnected
+		return gameEndMsg
 	def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
 		assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'
 		assert self.connected or command == COM.CONNECT, 'the session is not conected'
@@ -90,7 +94,6 @@ class Session:
 	def disconnect(self):
 		assert self.connected
 		self.tryToSend(COM.DISCONNECT, {}, lambda res: self.repeatebleInit(), blocking=False, mustSend=True)
-		self.connected = False
 	def quit(self):
 		'''gracefully closes session (recvs last reqs, joins threads), COM.DISCONNECT must have been sent in advance'''
 		while not self.noPendingReqs():

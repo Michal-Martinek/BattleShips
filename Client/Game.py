@@ -23,18 +23,17 @@ class Game:
 		self.options.repeatableInit()
 	def quit(self):
 		logging.info('Closing due to client quit')
+		if self.session.connected: self.session.disconnect()
 		self.newGameStage(STAGES.CLOSING)
 	def newGameStage(self, stage: STAGES):
-		assert STAGES.COUNT == 12
+		assert STAGES.COUNT == 11
 		assert stage != self.gameStage
 		self.gameStage = stage
 		Frontend.Runtime.readyBtnRect = None
 		if self.gameStage == STAGES.MAIN_MENU:
 			self.repeatableInit()
-		elif self.gameStage in [STAGES.WON, STAGES.LOST, STAGES.CLOSING] and self.session.connected:
-			self.session.disconnect()
-			if self.gameStage != STAGES.CLOSING and '--autoplay' in sys.argv:
-				pygame.time.set_timer(pygame.QUIT, 1000, 1)
+		elif self.gameStage == STAGES.GAME_END and '--autoplay' in sys.argv:
+			pygame.time.set_timer(pygame.QUIT, 1000, 1)
 		elif self.gameStage == STAGES.PLACING:
 			self.redrawHUD()
 			if '--autoplace' in sys.argv:
@@ -86,28 +85,33 @@ class Game:
 	def shootCallback(self, gridPos, res):
 		hitted, sunkenShip, gameWon = res['hitted'], Ship.fromDict(res['sunken_ship']), res['game_won']
 		self.opponentGrid.gotShotted(gridPos, hitted, sunkenShip)
-		self.newGameStage(STAGES.WON if gameWon else STAGES.GETTING_SHOT)
-		if gameWon: logging.info('Game won')
+		self.newGameStage(STAGES.GAME_END if gameWon else STAGES.GETTING_SHOT)
+		if gameWon:
+			logging.info('Game won')
+			self.options.gameEndMsg = res['game_end_msg']
 	def gettingShotCallback(self, res):
 		if not res['shotted']: return
 		self.grid.gotShotted(res['pos'])
-		self.newGameStage(STAGES.LOST if res['lost'] else STAGES.SHOOTING)
-		if res['lost']: logging.info('Game lost')
+		self.newGameStage(STAGES.GAME_END if res['lost'] else STAGES.SHOOTING)
+		if res['lost']:
+			logging.info('Game lost')
+			self.options.gameEndMsg = res['game_end_msg']
 
 	def handleRequests(self):
-		assert STAGES.COUNT == 12
-		stayConnected = self.session.loadResponses()
-		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.WON, STAGES.LOST]:
-			if '--autoplay-repeat' in sys.argv and not self.session.connected and not any(self.session.alreadySent.values()):
+		assert STAGES.COUNT == 11
+		gameEndMsg = self.session.loadResponses()
+		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.GAME_END]:
+			if '--autoplay-repeat' in sys.argv and not self.session.connected:
 				logging.debug('Autoplay repeat')
 				self.repeatableInit()
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
 			self.session.quit()
-		elif not stayConnected:
-			logging.warning('Server commanded disconnect')
-			self.newGameStage(STAGES.WON)
+		elif gameEndMsg and self.gameStage != STAGES.GAME_END: # proper game end handled in callback
+			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
+			self.options.gameEndMsg = gameEndMsg
+			self.newGameStage(STAGES.GAME_END)
 		
 		elif self.gameStage == STAGES.CONNECTING:
 			self.session.tryToSend(COM.CONNECT, {'name': self.options.submittedPlayerName()}, self.connectCallback, blocking=False)
@@ -184,7 +188,7 @@ class Game:
 			self.gameReadiness()
 	# drawing --------------------------------
 	def drawGame(self):
-		assert STAGES.COUNT == 12
+		assert STAGES.COUNT == 11
 		if not self.redrawNeeded or self.gameStage == STAGES.CLOSING: return
 		self.redrawNeeded = False
 		drawHud = True
@@ -205,7 +209,7 @@ class Game:
 		if drawHud: Frontend.drawHUD()
 		Frontend.update()
 	def drawStatic(self):
-		assert STAGES.COUNT == 12
+		assert STAGES.COUNT == 11
 		Frontend.fillColor((255, 255, 255))
 		if self.gameStage == STAGES.MAIN_MENU:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), 'MAIN MENU')
@@ -217,9 +221,8 @@ class Game:
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 450), 'Press ENTER to play...')
 		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (50, 300), 'Waiting for opponent...')
-		elif self.gameStage in [STAGES.WON, STAGES.LOST]:
-			message = ['You lost!   :(', 'You won!   :)'][self.gameStage == STAGES.WON]
-			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), message, (0, 0, 0))
+		elif self.gameStage == STAGES.GAME_END:
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), self.options.gameEndMsg, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
 	def redrawHUD(self):
 		grid = self.opponentGrid if self.gameStage == STAGES.SHOOTING else self.grid
@@ -238,6 +241,8 @@ class Options:
 		self.inputActive = False
 		self.opponentName = ''
 		self.opponentReady = False
+
+		self.gameEndMsg = 'UNREACHABLE!'
 
 	def addChar(self, c):
 		if c == ' ': c = '_'
@@ -482,7 +487,7 @@ class Ship:
 		return segments
 
 	def getnoShipsRect(self):
-		rect = Rect(self.pos[0] - 1, self.pos[1] - 1,  self.widthInGrid + 2, self.heightInGrid + 2)
+		rect = Rect(self.pos[0] - 1, self.pos[1] - 1, self.widthInGrid + 2, self.heightInGrid + 2)
 		return rect.clip(Rect(0, 0, Constants.GRID_WIDTH, Constants.GRID_HEIGHT))
 	def getOccupiedRect(self):
 		return Rect(self.pos[0], self.pos[1], self.widthInGrid, self.heightInGrid)
