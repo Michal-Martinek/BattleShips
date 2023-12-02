@@ -185,6 +185,7 @@ class Game:
 	def toggleGameReady(self):
 		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT] and self.grid.allShipsPlaced():
 			logging.info('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
+			if '--start-sunken' in sys.argv: self.grid.startSunken()
 			self.gameReadiness()
 	# drawing --------------------------------
 	def drawGame(self):
@@ -337,6 +338,10 @@ class Grid:
 				self.ships.append(ship)
 				self.shipSizes[ship.size] -= 1
 			assert self.allShipsPlaced(), 'autoplace is expected to place all ships'
+	def startSunken(self):
+		for ship in self.ships:
+			ship.hitted = [True] * ship.size
+			if ship.size == 4: ship.hitted = [True, False, True, False]
 
 	def pickUpShip(self, mousePos) -> bool:
 		ship = self._getClickedShip(mousePos)
