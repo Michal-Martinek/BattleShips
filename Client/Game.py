@@ -94,6 +94,7 @@ class Game:
 			self.newGameStage(STAGES.GAME_END)
 			logging.info('Game won')
 			self.options.gameEndMsg = res['game_end_msg']
+			self.opponentGrid.updateAfterGameEnd(res['opponent_grid'])
 	def gettingShotCallback(self, res):
 		if not res['shotted']: return
 		self.grid.gotShotted(res['pos'])
@@ -102,6 +103,7 @@ class Game:
 			logging.info('Game lost')
 			self.newGameStage(STAGES.GAME_END)
 			self.options.gameEndMsg = res['game_end_msg']
+			self.opponentGrid.updateAfterGameEnd(res['opponent_grid'])
 
 	def handleRequests(self):
 		assert STAGES.COUNT == 11
@@ -167,8 +169,9 @@ class Game:
 	def keydownInMenu(self, event):
 		self.redrawNeeded = True
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
+			stageChanges = {STAGES.MAIN_MENU: STAGES.MULTIPLAYER_MENU, STAGES.MULTIPLAYER_MENU: STAGES.CONNECTING, STAGES.GAME_END: STAGES.MAIN_MENU, STAGES.END_GRID_SHOW: STAGES.GAME_END}
 			if self.options.inputActive: self.options.inputActive = False
-			else: self.newGameStage(STAGES.MULTIPLAYER_MENU if self.gameStage == STAGES.MAIN_MENU else STAGES.CONNECTING)
+			else: self.newGameStage(stageChanges[self.gameStage])
 		elif event.key in [pygame.K_LEFT, pygame.K_RIGHT]:
 			self.options.moveCursor([-1, 1][event.key == pygame.K_RIGHT])
 		elif event.key in [pygame.K_BACKSPACE, pygame.K_DELETE]:
@@ -180,7 +183,7 @@ class Game:
 			self.grid.changeSize(increment)
 			self.redrawNeeded = True
 	def advanceAnimations(self):
-		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
+		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT, STAGES.SHOOTING, STAGES.END_GRID_SHOW]:
 			self.redrawNeeded |= pygame.display.get_active()
 			Ship.advanceAnimations()
 	def shoot(self, mousePos):
@@ -205,10 +208,8 @@ class Game:
 			self.grid.draw()
 			text = f" Waiting for opponent.{'.' * Ship.animationStage:<2}"
 			Frontend.render(Frontend.FONT_ARIAL_MSGS, Constants.HUD_RECT.midbottom, text, (255, 255, 255), (40, 40, 40), (255, 255, 255), 2, 8, fitMode='midtop', border_bottom_left_radius=10, border_bottom_right_radius=10)
-		elif self.gameStage == STAGES.SHOOTING:
-			self.opponentGrid.draw(shots=True)
-		elif self.gameStage == STAGES.GETTING_SHOT:
-			self.grid.draw(shots=True)
+		elif self.gameStage in [STAGES.SHOOTING, STAGES.END_GRID_SHOW]:
+			[self.opponentGrid, self.grid][self.options.myGridShown].draw(shots=True)
 		else:
 			drawHud = False
 			self.drawStatic()
@@ -232,7 +233,7 @@ class Game:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), self.options.gameEndMsg, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
 	def redrawHUD(self):
-		grid = self.opponentGrid if self.gameStage == STAGES.SHOOTING else self.grid
+		grid = self.grid if self.options.myGridShown else self.opponentGrid
 		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage)
 		self.redrawNeeded = True
 
@@ -419,6 +420,14 @@ class Grid:
 					self.shots[y][x] = SHOTS.BLOCKED
 				if occupied.collidepoint((x, y)):
 					self.shots[y][x] = SHOTS.HITTED_SUNKEN
+	def updateAfterGameEnd(self, dicts):
+		assert not self.isLocal
+		for ship in dicts['ships']:
+			ship = Ship.fromDict(ship)
+			if self.canPlaceShip(ship): self.ships.append(ship)
+		for y, row in enumerate(self.shots):
+			for x, shot in enumerate(row):
+				if shot == SHOTS.HITTED: self.shots[y][x] = SHOTS.HITTED_SUNKEN
 
 	# drawing -----------------------------------------------
 	def drawShot(self, color, x, y):

@@ -9,6 +9,7 @@ class STAGES(IntEnum):
 	GAME_WAIT = auto()
 	SHOOTING = auto()
 	GAME_END = auto()
+	END_GRID_SHOW = auto()
 	CLOSING = auto()
 
 	COUNT = auto()

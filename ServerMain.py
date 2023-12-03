@@ -353,16 +353,18 @@ class Server:
 	def shootReq(self, player: ConnectedPlayer, game: Game, req: Request):
 		asert(player.id == game.playerOnTurn, req, 'only player on turn can shoot')
 		hitted, sunkenShip, gameWon = game.shoot(player, req.payload['pos'])
+		payload = {'hitted': hitted, 'sunken_ship': sunkenShip, 'game_won': gameWon}
 		if gameWon:
 			game.gameStage = STAGES.GAME_END
 			req.setNotStayConnected('You won!   :)')
 			logging.info(f'Game {game.id} won {player.id}')
+			payload['opponent_grid'] = game.getOpponentState(player)
 		opponent = game.getOpponent(player)
 		if opponent.id in self.blockingReqs:
 			blocking = self.blockingReqs[opponent.id]
 			assert blocking.command == COM.OPPONENT_SHOT
 			self.sendOpponentShottedRes(opponent, game, blocking)
-		self._sendResponse(req, {'hitted': hitted, 'sunken_ship': sunkenShip, 'game_won': gameWon})
+		self._sendResponse(req, payload)
 	def opponentShotted(self, player: ConnectedPlayer, game: Game, req: Request):
 		if game.didOpponentShoot(player):
 			self.sendOpponentShottedRes(player, game, req)
@@ -373,6 +375,7 @@ class Server:
 		payload = {'shotted': True, 'pos': pos, 'lost': lost}
 		if lost:
 			req.setNotStayConnected('You lost!   :(')
+			payload['opponent_grid'] = game.getOpponentState(player)
 		if isinstance(req, BlockingRequest):
 			assert player.id in self.blockingReqs
 			self.respondBlockingReq(player, payload, disconnect=True)
