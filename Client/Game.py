@@ -39,10 +39,14 @@ class Game:
 			if '--autoplace' in sys.argv:
 				self.grid.autoplace()
 				self.toggleGameReady()
-		elif self.gameStage in [STAGES.GAME_WAIT, STAGES.SHOOTING, STAGES.GETTING_SHOT]:
+		elif self.gameStage in [STAGES.GAME_WAIT, STAGES.SHOOTING]:
 			self.redrawHUD()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
+	def changeGridShown(self, my=None):
+		if my is None: my = not self.options.myGridShown
+		self.options.myGridShown = my
+		self.redrawHUD()
 
 	# requests -------------------------------------------------
 	def connectCallback(self, res):
@@ -74,9 +78,9 @@ class Game:
 		else: self.redrawHUD()
 	def gameWaitCallback(self, res):
 		if res['started']:
-			onTurn = res['on_turn'] == self.session.id
 			self.grid.initShipSizes()
-			self.newGameStage(STAGES.SHOOTING if onTurn else STAGES.GETTING_SHOT)
+			self.changeGridShown(res['on_turn'] != self.session.id)
+			self.newGameStage(STAGES.SHOOTING)
 			logging.info('Shooting started')
 	def shootReq(self, gridPos):
 		assert self.gameStage == STAGES.SHOOTING
@@ -85,16 +89,18 @@ class Game:
 	def shootCallback(self, gridPos, res):
 		hitted, sunkenShip, gameWon = res['hitted'], Ship.fromDict(res['sunken_ship']), res['game_won']
 		self.opponentGrid.gotShotted(gridPos, hitted, sunkenShip)
-		self.newGameStage(STAGES.GAME_END if gameWon else STAGES.GETTING_SHOT)
+		self.changeGridShown()
 		if gameWon:
+			self.newGameStage(STAGES.GAME_END)
 			logging.info('Game won')
 			self.options.gameEndMsg = res['game_end_msg']
 	def gettingShotCallback(self, res):
 		if not res['shotted']: return
 		self.grid.gotShotted(res['pos'])
-		self.newGameStage(STAGES.GAME_END if res['lost'] else STAGES.SHOOTING)
+		self.changeGridShown()
 		if res['lost']:
 			logging.info('Game lost')
+			self.newGameStage(STAGES.GAME_END)
 			self.options.gameEndMsg = res['game_end_msg']
 
 	def handleRequests(self):
@@ -121,7 +127,7 @@ class Game:
 			self.session.tryToSend(COM.OPPONENT_READY, {'expected': self.options.opponentReady}, self.opponentReadyCallback, blocking=True)
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
-		elif self.gameStage == STAGES.GETTING_SHOT:
+		elif self.gameStage == STAGES.SHOOTING and self.options.myGridShown:
 			self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True)
 		self.session.spawnConnectionCheck()
 
@@ -178,7 +184,7 @@ class Game:
 			self.redrawNeeded |= pygame.display.get_active()
 			Ship.advanceAnimations()
 	def shoot(self, mousePos):
-		if self.gameStage == STAGES.SHOOTING:
+		if self.gameStage == STAGES.SHOOTING and not self.options.myGridShown:
 			gridPos = self.opponentGrid.shoot(mousePos)
 			if gridPos:
 				self.shootReq(gridPos)
@@ -243,6 +249,7 @@ class Options:
 		self.opponentName = ''
 		self.opponentReady = False
 
+		self.myGridShown = True
 		self.gameEndMsg = 'UNREACHABLE!'
 
 	def addChar(self, c):

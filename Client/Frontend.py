@@ -248,10 +248,10 @@ def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
 	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 
 	genShipboxes(shipSizes, gameStage)
-	if (onTurn := gameStage == STAGES.SHOOTING) or gameStage == STAGES.GETTING_SHOT:
+	if gameStage == STAGES.SHOOTING:
 		[r.move_ip(0, -2) for r in iconRects]
-		blit(IMG_HUD_SHOOTING, iconRects[onTurn], rectAttr='topright' if onTurn else 'topleft', surf=IMG_HUD)
-		blit(IMG_HUD_AIM, iconRects[not onTurn], rectAttr='topright' if not onTurn else 'topleft', surf=IMG_HUD)
+		blit(IMG_HUD_SHOOTING, iconRects[not options.myGridShown], rectAttr='topright' if not options.myGridShown else 'topleft', surf=IMG_HUD)
+		blit(IMG_HUD_AIM, iconRects[options.myGridShown], rectAttr='topright' if options.myGridShown else 'topleft', surf=IMG_HUD)
 	else: blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 
 	if gameStage in [STAGES.PLACING, STAGES.GAME_WAIT]:
