@@ -392,10 +392,10 @@ class Grid:
 		self.flyingShip.setSize(currSize)
 
 	# shooting --------------------------------------------------
-	def localGridShotted(self, pos) -> tuple[bool, Ship]:
-		'''returns if hitted , any hitted ship'''
+	def localGridShotted(self, pos, update=True) -> tuple[bool, Ship]:
+		'''returns if hitted, any hitted ship'''
 		for ship in self.ships:
-			if ship.shot(pos):
+			if ship.shot(pos, update):
 				return True, ship
 		return False, None
 	def gotShotted(self, pos, hitted=False, sunkenShip=None):
@@ -444,7 +444,7 @@ class Grid:
 		if thumbRect is not None: colors.update({SHOTS.HITTED: (255, 0, 0), SHOTS.HITTED_SUNKEN: (255, 0, 0), SHOTS.NOT_SHOTTED: (0, 0, 0)})
 		for y, lineShotted in enumerate(self.shots):
 			for x, shot in enumerate(lineShotted):
-				if shot in colors and (shot != SHOTS.NOT_SHOTTED or (thumbRect is not None and self.localGridShotted((x, y))[0])):
+				if shot in colors and (shot != SHOTS.NOT_SHOTTED or self.localGridShotted((x, y), update=False)[0]):
 					self.drawShot(colors[shot], x, y, thumbRect=thumbRect)
 	def draw(self, *, flying=False, shots=False):
 		Frontend.drawBackground()
@@ -531,7 +531,7 @@ class Ship:
 		'''checks if other collides with the noShipsRect of self'''
 		return self.getnoShipsRect().colliderect(other.getOccupiedRect())
 
-	def shot(self, pos) -> bool:
+	def shot(self, pos, update) -> bool:
 		if not self.getOccupiedRect().collidepoint(pos):
 			return False
 
@@ -539,7 +539,7 @@ class Ship:
 		for i, (x, y) in enumerate(self.getRealSegmentCoords()):
 			r = Rect(x, y, 1, 1)
 			if r.collidepoint((realPos)):
-				self.hitted[i] = True
+				if update: self.hitted[i] = True
 				return True
 		return False
 	@ classmethod
