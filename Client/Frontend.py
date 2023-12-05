@@ -207,6 +207,8 @@ def drawRect(rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, bo
 	if boundaryColor: pygame.draw.rect(surf, boundaryColor, rect, boundaryWidth, **rectArgs)
 def drawCircle(color, pos, size):
 	pygame.draw.circle(Runtime.display, color, pos, size)
+def drawLine(color, start, end, width=1, *, surf=Runtime.display):
+	return pygame.draw.line(surf, color, start, end, width)
 
 def update():
 	pygame.display.update()

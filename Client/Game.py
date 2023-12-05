@@ -43,7 +43,7 @@ class Game:
 			self.redrawHUD()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
-	def changeGridShown(self, my=None):
+	def changeGridShown(self, my:bool=None):
 		if my is None: my = not self.options.myGridShown
 		self.options.myGridShown = my
 		self.redrawHUD()
@@ -157,6 +157,9 @@ class Game:
 			self.toggleGameReady()
 		elif not rightClick and (size := Frontend.HUDShipboxCollide(mousePos, True)):
 			self.grid.changeSize(+1, canBeSame=True, currSize=size)
+		elif self.gameStage == STAGES.GAME_END and any((clicked := [r.collidepoint(mousePos) for r in Constants.THUMBNAIL_RECTS])):
+			self.changeGridShown(my=clicked[0])
+			self.newGameStage(STAGES.END_GRID_SHOW)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed: self.redrawHUD()
@@ -232,6 +235,8 @@ class Game:
 		elif self.gameStage == STAGES.GAME_END:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), self.options.gameEndMsg, (0, 0, 0))
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
+			self.grid.drawThumbnail(Constants.THUMBNAIL_RECTS[0])
+			self.opponentGrid.drawThumbnail(Constants.THUMBNAIL_RECTS[1])
 	def redrawHUD(self):
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
 		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage)
@@ -430,20 +435,30 @@ class Grid:
 				if shot == SHOTS.HITTED: self.shots[y][x] = SHOTS.HITTED_SUNKEN
 
 	# drawing -----------------------------------------------
-	def drawShot(self, color, x, y):
-		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET)
-		Frontend.drawCircle(color, pos, Constants.GRID_X_SPACING // 4)
-	def drawShots(self):
-		colors = {SHOTS.HITTED: (255, 0, 0), SHOTS.NOT_HITTED: (11, 243, 255), SHOTS.BLOCKED: (128, 128, 128)}
+	def drawShot(self, color, x, y, *, thumbRect:Rect=None):
+		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET) if thumbRect is None else (thumbRect.x + Constants.THUMBNAIL_SPACINGS * x + Constants.THUMBNAIL_SPACINGS // 2, thumbRect.y + Constants.THUMBNAIL_SPACINGS * y + Constants.THUMBNAIL_SPACINGS // 2)
+		Frontend.drawCircle(color, pos, (Constants.GRID_X_SPACING if thumbRect is None else Constants.THUMBNAIL_SPACINGS) // 4)
+	def drawShots(self, *, thumbRect:Rect=None):
+		colors = {SHOTS.NOT_HITTED: (11, 243, 255)}
+		if not self.isLocal: colors.update({SHOTS.HITTED: (255, 0, 0), SHOTS.BLOCKED: (128, 128, 128)})
+		if thumbRect is not None: colors.update({SHOTS.HITTED: (255, 0, 0), SHOTS.HITTED_SUNKEN: (255, 0, 0), SHOTS.NOT_SHOTTED: (0, 0, 0)})
 		for y, lineShotted in enumerate(self.shots):
 			for x, shot in enumerate(lineShotted):
-				if shot in colors and (not self.isLocal or shot == SHOTS.NOT_HITTED):
-					self.drawShot(colors[shot], x, y)
+				if shot in colors and (shot != SHOTS.NOT_SHOTTED or (thumbRect is not None and self.localGridShotted((x, y))[0])):
+					self.drawShot(colors[shot], x, y, thumbRect=thumbRect)
 	def draw(self, *, flying=False, shots=False):
 		Frontend.drawBackground()
 		for ship in self.ships: ship.draw()
 		if shots: self.drawShots()
 		if flying and self.flyingShip.size: self.flyingShip.draw()
+	def _drawThumbBackground(self, rect: pygame.Rect):
+		Frontend.drawRect(rect, (0, 0, 255))
+		for i in range(11):
+			Frontend.drawLine((0, 0, 0), (rect.x, rect.y + Constants.THUMBNAIL_SPACINGS * i), (rect.right, rect.y + Constants.THUMBNAIL_SPACINGS * i))
+			Frontend.drawLine((0, 0, 0), (rect.x + Constants.THUMBNAIL_SPACINGS * i, rect.y), (rect.x + Constants.THUMBNAIL_SPACINGS * i, rect.bottom))
+	def drawThumbnail(self, rect: Rect):
+		self._drawThumbBackground(rect)
+		self.drawShots(thumbRect=rect)
 
 
 class Ship:
