@@ -48,6 +48,7 @@ class _Runtime:
 	readyBtnRect: pygame.Rect = None # NOTE: Rect only if btn hoverable
 	shipboxRects: dict[int, pygame.Rect] = None
 	shipboxHovered: set[int] = None
+	thumbnailHovers: list[bool] = None
 
 	def __init__(self):
 		self.display = pygame.display.set_mode((Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT), pygame.NOFRAME)
@@ -57,6 +58,7 @@ class _Runtime:
 		pygame.display.set_icon(loadImage('BattleShips.ico'))
 		self.shipboxRects = dict()
 		self.shipboxHovered = set()
+		self.thumbnailHovers = [False, False]
 
 Runtime = _Runtime()
 
@@ -149,6 +151,12 @@ def HUDReadyCollide(mousePos, click=False) -> bool:
 	changed = Runtime.readyBtnHovered ^ readyHover
 	Runtime.readyBtnHovered = readyHover
 	return changed or (click and readyHover)
+def thumbnailCollide(mousePos, click=False):
+	hovers = [r.collidepoint(mousePos) for r in Constants.THUMBNAIL_OUTER_RECTS]
+	changed = any([old ^ hover for old, hover in zip(Runtime.thumbnailHovers, hovers)])
+	Runtime.thumbnailHovers = hovers
+	if click: return any(hovers), hovers.index(True) if any(hovers) else None
+	return changed
 
 def drawHeader():
 	Runtime.display.blit(IMG_HEADER, (0, 0))
@@ -165,6 +173,13 @@ def drawHeader():
 def drawHUD():
 	assert IMG_HUD is not None
 	Runtime.display.blit(IMG_HUD, Constants.HUD_RECT)
+def drawThumbnailName(isOpponentGrid: bool, playerName: str, gridRect: pygame.Rect):
+	nameColor = (0, 0, 0)
+	if Runtime.thumbnailHovers[isOpponentGrid]:
+		drawRect(Constants.THUMBNAIL_OUTER_RECTS[isOpponentGrid], (40, 40, 40), border_radius=Constants.THUMBNAIL_MARGIN)
+		nameColor = (255, 255, 255)
+	render(FONT_ARIAL_MSGS, gridRect.move(0, -2).midtop, playerName, nameColor, fitMode='midbottom')
+
 def drawBackground():
 	Runtime.display.blit(IMG_BACKGROUND, (0, Constants.HEADER_HEIGHT))
 
@@ -202,7 +217,7 @@ def fillColor(color):
 	Runtime.display.fill(color)
 def drawRect(rect, backgroundColor=None, boundaryColor=None, boundaryWidth=0, boundaryPadding=0, surf=Runtime.display, **rectArgs):
 	if isinstance(rect, tuple): rect = pygame.Rect(*rect)
-	rect.inflate_ip(2 * boundaryPadding, 2 * boundaryPadding)
+	rect = rect.inflate(2 * boundaryPadding, 2 * boundaryPadding)
 	if backgroundColor: pygame.draw.rect(surf, backgroundColor, rect, **rectArgs)
 	if boundaryColor: pygame.draw.rect(surf, boundaryColor, rect, boundaryWidth, **rectArgs)
 def drawCircle(color, pos, size):

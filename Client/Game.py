@@ -157,8 +157,8 @@ class Game:
 			self.toggleGameReady()
 		elif not rightClick and (size := Frontend.HUDShipboxCollide(mousePos, True)):
 			self.grid.changeSize(+1, canBeSame=True, currSize=size)
-		elif self.gameStage == STAGES.GAME_END and any((clicked := [r.collidepoint(mousePos) for r in Constants.THUMBNAIL_RECTS])):
-			self.changeGridShown(my=clicked[0])
+		elif self.gameStage == STAGES.GAME_END and (res := Frontend.thumbnailCollide(mousePos, True))[0]:
+			self.changeGridShown(my=res[1] == 0)
 			self.newGameStage(STAGES.END_GRID_SHOW)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
@@ -166,9 +166,12 @@ class Game:
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
-		if Frontend.Runtime.windowGrabbedPos: Frontend.moveWindow(event.pos)
-		elif Frontend.HUDReadyCollide(event.pos) or Frontend.HUDShipboxCollide(event.pos): self.redrawHUD()
-		elif Frontend.headerBtnCollide(event.pos) or self.grid.flyingShip.size: self.redrawNeeded = True
+		if Frontend.Runtime.windowGrabbedPos: return Frontend.moveWindow(event.pos)
+		self.redrawNeeded = True
+		if Frontend.HUDReadyCollide(event.pos) or Frontend.HUDShipboxCollide(event.pos): self.redrawHUD()
+		elif Frontend.headerBtnCollide(event.pos): pass
+		elif self.gameStage == STAGES.GAME_END and Frontend.thumbnailCollide(event.pos): pass
+		else: self.redrawNeeded = self.grid.flyingShip.size
 	def keydownInMenu(self, event):
 		self.redrawNeeded = True
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
@@ -233,10 +236,10 @@ class Game:
 		elif self.gameStage == STAGES.PAIRING:
 			Frontend.render(Frontend.FONT_ARIAL_BIG, (50, 300), 'Waiting for opponent...')
 		elif self.gameStage == STAGES.GAME_END:
-			Frontend.render(Frontend.FONT_ARIAL_BIG, (150, 300), self.options.gameEndMsg, (0, 0, 0))
-			Frontend.render(Frontend.FONT_ARIAL_SMALL, (150, 400), 'Press any key for exit')
-			self.grid.drawThumbnail(Constants.THUMBNAIL_RECTS[0])
-			self.opponentGrid.drawThumbnail(Constants.THUMBNAIL_RECTS[1])
+			Frontend.render(Frontend.FONT_ARIAL_BIG, (80, 200), self.options.gameEndMsg, (0, 0, 0))
+			Frontend.render(Frontend.FONT_ARIAL_SMALL, (80, 300), 'Press enter to exit')
+			self.grid.drawThumbnail(self.options.submittedPlayerName())
+			self.opponentGrid.drawThumbnail(self.options.opponentName)
 	def redrawHUD(self):
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
 		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage)
@@ -436,7 +439,7 @@ class Grid:
 
 	# drawing -----------------------------------------------
 	def drawShot(self, color, x, y, *, thumbRect:Rect=None):
-		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET) if thumbRect is None else (thumbRect.x + Constants.THUMBNAIL_SPACINGS * x + Constants.THUMBNAIL_SPACINGS // 2, thumbRect.y + Constants.THUMBNAIL_SPACINGS * y + Constants.THUMBNAIL_SPACINGS // 2)
+		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET) if thumbRect is None else (thumbRect.x + Constants.THUMBNAIL_SPACINGS * x + Constants.THUMBNAIL_SPACINGS // 2 + 1, thumbRect.y + Constants.THUMBNAIL_SPACINGS * y + Constants.THUMBNAIL_SPACINGS // 2 + 1)
 		Frontend.drawCircle(color, pos, (Constants.GRID_X_SPACING if thumbRect is None else Constants.THUMBNAIL_SPACINGS) // 4)
 	def drawShots(self, *, thumbRect:Rect=None):
 		colors = {SHOTS.NOT_HITTED: (11, 243, 255)}
@@ -456,8 +459,17 @@ class Grid:
 		for i in range(11):
 			Frontend.drawLine((0, 0, 0), (rect.x, rect.y + Constants.THUMBNAIL_SPACINGS * i), (rect.right, rect.y + Constants.THUMBNAIL_SPACINGS * i))
 			Frontend.drawLine((0, 0, 0), (rect.x + Constants.THUMBNAIL_SPACINGS * i, rect.y), (rect.x + Constants.THUMBNAIL_SPACINGS * i, rect.bottom))
-	def drawThumbnail(self, rect: Rect):
+	def _drawShipBodyLines(self, rect: Rect):
+		for ship in self.ships:
+			pos = rect.x + Constants.THUMBNAIL_SPACINGS // 2, rect.y + Constants.THUMBNAIL_SPACINGS // 2
+			start = pos[0] + Constants.THUMBNAIL_SPACINGS * ship.pos[0], pos[1] + Constants.THUMBNAIL_SPACINGS * ship.pos[1]
+			end = start[0] + Constants.THUMBNAIL_SPACINGS * (ship.widthInGrid - 1), start[1] + Constants.THUMBNAIL_SPACINGS * (ship.heightInGrid - 1)
+			Frontend.drawLine((255, 0, 0) if all(ship.hitted) else (0, 0, 0), start, end, 4)
+	def drawThumbnail(self, playerName):
+		rect = Constants.THUMBNAIL_GRID_RECTS[not self.isLocal]
+		Frontend.drawThumbnailName(not self.isLocal, playerName, rect)
 		self._drawThumbBackground(rect)
+		self._drawShipBodyLines(rect)
 		self.drawShots(thumbRect=rect)
 
 
