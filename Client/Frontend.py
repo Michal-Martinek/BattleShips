@@ -237,12 +237,13 @@ def genHeader() -> pygame.Surface:
 	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (Constants.SCREEN_WIDTH-1, 0), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
 	surf.blit(loadImage('BattleShips.ico'), (0, 0))
 	return surf
-def genReadyBtn(iconRect: pygame.Rect, gameWait: bool, allShipsPlaced: bool):
+def genReadyBtn(iconRect: pygame.Rect, gameStage: STAGES, allShipsPlaced=True):
 	readyBtnPos = iconRect.x + Constants.HUD_READY_BTN_DEFAULTS[0], Constants.HUD_READY_BTN_DEFAULTS[1]
-	img = IMG_HUD_READY_BTNS[gameWait][Runtime.readyBtnHovered] if allShipsPlaced else IMG_HUD_READY_BTNS[2]
+	imgIdx = (gameStage == STAGES.GAME_WAIT) + 2 * (gameStage == STAGES.END_GRID_SHOW)
+	img = IMG_HUD_READY_BTNS[imgIdx][Runtime.readyBtnHovered] if allShipsPlaced else IMG_HUD_READY_BTNS[-1]
 	rect = blit(img, readyBtnPos, rectAttr='bottomleft', surf=IMG_HUD)
 	Runtime.readyBtnRect = None
-	if not allShipsPlaced: return
+	if not allShipsPlaced and gameStage != STAGES.END_GRID_SHOW: return
 	Runtime.readyBtnRect = rect.move(0, Constants.HEADER_HEIGHT - Runtime.readyBtnHovered * 3) # match rect of hovered and normal button
 	Runtime.readyBtnRect.h += Runtime.readyBtnHovered * 3
 def genPlayerNames(options) -> list[pygame.Rect]:
@@ -255,12 +256,13 @@ def genIcons(iconRects: list[pygame.Rect], options, gameStage: STAGES, allShipsP
 		blit(IMG_HUD_SHOOTING, iconRects[not options.myGridShown].move(0, -2), rectAttr='topright' if not options.myGridShown else 'topleft', surf=IMG_HUD)
 		blit(IMG_HUD_AIM, iconRects[options.myGridShown].move(0, -2), rectAttr='topright' if options.myGridShown else 'topleft', surf=IMG_HUD)
 	elif gameStage == STAGES.END_GRID_SHOW:
-		pass
+		genReadyBtn(iconRects[0], gameStage)
 	else:
 		blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
-		genReadyBtn(iconRects[0], gameStage == STAGES.GAME_WAIT, allShipsPlaced)
+		genReadyBtn(iconRects[0], gameStage, allShipsPlaced)
 def genShipboxes(shipSizes: dict[int, int], gameStage: STAGES):
 	Runtime.shipboxRects = dict()
+	if gameStage == STAGES.END_GRID_SHOW and any(shipSizes.values()) == 0: return
 	for size, rect in enumerate(Constants.HUD_SHIPBOX_RECTS, 1):
 		r = blit(IMG_HUD_SHIPBOXES[size-1], rect, rectAttr='topright', surf=IMG_HUD)
 		remaining = shipSizes[size]

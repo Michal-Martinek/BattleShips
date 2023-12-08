@@ -154,12 +154,13 @@ class Game:
 			self.options.inputActive = False
 		elif self.gameStage == STAGES.MULTIPLAYER_MENU: self.options.mouseClick(mousePos)
 		elif not rightClick and Frontend.HUDReadyCollide(mousePos, True):
-			self.toggleGameReady()
+			if self.gameStage == STAGES.END_GRID_SHOW: self.newGameStage(STAGES.GAME_END)
+			else: self.toggleGameReady()
 		elif not rightClick and (size := Frontend.HUDShipboxCollide(mousePos, True)):
 			self.grid.changeSize(+1, canBeSame=True, currSize=size)
 		elif self.gameStage == STAGES.GAME_END and (res := Frontend.thumbnailCollide(mousePos, True))[0]:
-			self.changeGridShown(my=res[1] == 0)
 			self.newGameStage(STAGES.END_GRID_SHOW)
+			self.changeGridShown(my=res[1] == 0)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed: self.redrawHUD()
