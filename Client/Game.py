@@ -102,6 +102,7 @@ class Game:
 		if res['lost']:
 			logging.info('Game lost')
 			self.newGameStage(STAGES.GAME_END)
+			self.options.gameWon = False
 			self.options.gameEndMsg = res['game_end_msg']
 			self.opponentGrid.updateAfterGameEnd(res['opponent_grid'])
 
@@ -243,7 +244,7 @@ class Game:
 			self.opponentGrid.drawThumbnail(self.options.opponentName)
 	def redrawHUD(self):
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
-		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage)
+		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage, not self.options.gameWon ^ self.options.myGridShown)
 		self.redrawNeeded = True
 
 class Options:
@@ -260,6 +261,7 @@ class Options:
 		self.opponentReady = False
 
 		self.myGridShown = True
+		self.gameWon = True
 		self.gameEndMsg = 'UNREACHABLE!'
 
 	def addChar(self, c):

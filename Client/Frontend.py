@@ -246,19 +246,21 @@ def genReadyBtn(iconRect: pygame.Rect, gameStage: STAGES, allShipsPlaced=True):
 	if not allShipsPlaced and gameStage != STAGES.END_GRID_SHOW: return
 	Runtime.readyBtnRect = rect.move(0, Constants.HEADER_HEIGHT - Runtime.readyBtnHovered * 3) # match rect of hovered and normal button
 	Runtime.readyBtnRect.h += Runtime.readyBtnHovered * 3
-def genPlayerNames(options) -> list[pygame.Rect]:
+def genPlayerNames(options, gameStage: STAGES) -> list[pygame.Rect]:
 	iconRects = [r.copy() for r in Constants.HUD_ICON_RECTS_DEFAULTS]
-	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], options.submittedPlayerName(), (255, 255, 255), surf=IMG_HUD).right
-	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
+	leftText = ["Opponent's grid", 'Your grid'][options.myGridShown] if gameStage == STAGES.END_GRID_SHOW else options.submittedPlayerName()
+	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], leftText, (255, 255, 255), surf=IMG_HUD).right
+	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.submittedPlayerName() if options.myGridShown else options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 	return iconRects
-def genIcons(iconRects: list[pygame.Rect], options, gameStage: STAGES, allShipsPlaced):
+def genIcons(iconRects: list[pygame.Rect], options, gameStage: STAGES, allShipsPlaced, gameWon):
+	rightImgMap = {STAGES.SHOOTING: IMG_HUD_AIM if options.myGridShown else IMG_HUD_SHOOTING, STAGES.END_GRID_SHOW: IMG_HUD_GAME_END[gameWon], None: IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING}
+	rightImg = rightImgMap[gameStage if gameStage in rightImgMap else None]
+	blit(rightImg, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 	if gameStage == STAGES.SHOOTING:
-		blit(IMG_HUD_SHOOTING, iconRects[not options.myGridShown].move(0, -2), rectAttr='topright' if not options.myGridShown else 'topleft', surf=IMG_HUD)
-		blit(IMG_HUD_AIM, iconRects[options.myGridShown].move(0, -2), rectAttr='topright' if options.myGridShown else 'topleft', surf=IMG_HUD)
+		blit(IMG_HUD_SHOOTING if options.myGridShown else IMG_HUD_AIM, iconRects[0], rectAttr='topleft', surf=IMG_HUD)
 	elif gameStage == STAGES.END_GRID_SHOW:
 		genReadyBtn(iconRects[0], gameStage)
 	else:
-		blit(IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING, iconRects[1], rectAttr='topright', surf=IMG_HUD)
 		genReadyBtn(iconRects[0], gameStage, allShipsPlaced)
 def genShipboxes(shipSizes: dict[int, int], gameStage: STAGES):
 	Runtime.shipboxRects = dict()
@@ -276,10 +278,10 @@ def prepareImgHUD():
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
 	IMG_HUD.set_colorkey(COLORKEY)
-def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES):
+def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES, gameWon: bool):
 	prepareImgHUD()
-	iconRects = genPlayerNames(options)
-	genIcons(iconRects, options, gameStage, sum(shipSizes.values()) == 0)
+	iconRects = genPlayerNames(options, gameStage)
+	genIcons(iconRects, options, gameStage, sum(shipSizes.values()) == 0, gameWon)
 	genShipboxes(shipSizes, gameStage)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')
@@ -297,9 +299,10 @@ IMG_HUD_READY = loadImage('HUD_ready.png')
 IMG_HUD_PLACING = loadImage('HUD_placing.png')
 IMG_HUD_SHOOTING = loadImage('HUD_shooting.png')
 IMG_HUD_AIM = loadImage('HUD_aim.png')
-IMG_HUD_READY_BTNS = [[loadImage('Buttons', f'ready_btn_{color}{hover}.png') for hover in ('', '_hover')] for color in ('red', 'green')] + [loadImage('Buttons', f'ready_btn_unavail.png')]
+IMG_HUD_READY_BTNS = [[loadImage('Buttons', f'ready_btn_{color}{hover}.png') for hover in ('', '_hover')] for color in ('red', 'green', 'back')] + [loadImage('Buttons', f'ready_btn_unavail.png')]
 IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)] + [loadImage('Shipboxes', 'shipbox_hovered.png')]
 IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
+IMG_HUD_GAME_END = [loadImage(f'HUD_{s}.png') for s in ('lost', 'won')]
 
 IMG_HEADER = genHeader()
 IMG_HUD = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))
