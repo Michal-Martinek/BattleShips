@@ -56,6 +56,10 @@ class _Runtime:
 		self.SDLwindow.position = (self.SDLwindow.position[0], 6)
 		pygame.display.set_caption('Battleships')
 		pygame.display.set_icon(loadImage('BattleShips.ico'))
+		self.resetVars()
+	def resetVars(self):
+		self.readyBtnHovered = False
+		self.readyBtnRect = None
 		self.shipboxRects = dict()
 		self.shipboxHovered = set()
 		self.thumbnailHovers = [False, False]

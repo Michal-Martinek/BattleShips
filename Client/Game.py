@@ -21,6 +21,7 @@ class Game:
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
 		self.options.repeatableInit()
+		self.session.repeatebleInit()
 	def quit(self):
 		logging.info('Closing due to client quit')
 		if self.session.connected: self.session.disconnect()
@@ -29,8 +30,8 @@ class Game:
 		assert STAGES.COUNT == 11
 		assert stage != self.gameStage
 		self.gameStage = stage
-		Frontend.Runtime.readyBtnRect = None
-		if self.gameStage == STAGES.MAIN_MENU:
+		Frontend.Runtime.resetVars()
+		if self.gameStage == STAGES.CONNECTING:
 			self.repeatableInit()
 		elif self.gameStage == STAGES.GAME_END and '--autoplay' in sys.argv:
 			pygame.time.set_timer(pygame.QUIT, 1000, 1)
@@ -112,7 +113,6 @@ class Game:
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.GAME_END]:
 			if '--autoplay-repeat' in sys.argv and not self.session.connected:
 				logging.debug('Autoplay repeat')
-				self.repeatableInit()
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
@@ -120,7 +120,7 @@ class Game:
 		elif gameEndMsg and self.gameStage != STAGES.GAME_END: # proper game end handled in callback
 			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
 			self.options.gameEndMsg = gameEndMsg
-			if opponentState is not None: self.opponentGrid.updateAfterGameEnd(opponentState)
+			if opponentState is not None and 'ships' in opponentState: self.opponentGrid.updateAfterGameEnd(opponentState)
 			self.newGameStage(STAGES.GAME_END)
 		
 		elif self.gameStage == STAGES.CONNECTING:
@@ -169,12 +169,11 @@ class Game:
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
-		if Frontend.Runtime.windowGrabbedPos: return Frontend.moveWindow(event.pos)
-		self.redrawNeeded = True
-		if Frontend.HUDReadyCollide(event.pos) or Frontend.HUDShipboxCollide(event.pos): self.redrawHUD()
-		elif Frontend.headerBtnCollide(event.pos): pass
-		elif self.gameStage == STAGES.GAME_END and Frontend.thumbnailCollide(event.pos): pass
-		else: self.redrawNeeded = self.grid.flyingShip.size
+		if Frontend.Runtime.windowGrabbedPos: Frontend.moveWindow(event.pos)
+		elif Frontend.HUDReadyCollide(event.pos) or Frontend.HUDShipboxCollide(event.pos): self.redrawHUD()
+		elif Frontend.headerBtnCollide(event.pos): self.redrawNeeded = True
+		elif self.gameStage == STAGES.GAME_END and Frontend.thumbnailCollide(event.pos): self.redrawNeeded = True
+		else: self.redrawNeeded |= self.grid.flyingShip.size
 	def keydownInMenu(self, event):
 		self.redrawNeeded = True
 		if event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
