@@ -389,6 +389,7 @@ class Server:
 				game = self.games[req.player.gameId]
 				if not game.gameActive:
 					req.setNotStayConnected('Opponent disconnected!   :|')
+					req.defaultResponse.update({'opponent_grid': game.getOpponentState(self.players[req.player.id])})
 					self.respondBlockingReq(req.player, useDefault=True)
 
 	def newConnectedPlayer(self, playerName):

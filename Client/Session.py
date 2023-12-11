@@ -66,22 +66,23 @@ class Session:
 			raise RuntimeError("Request specified with 'mustSent' could not be sent due to request being already sent")
 		return sent
 
-	def loadResponses(self, *, _drain=False) -> str:
+	def loadResponses(self, *, _drain=False) -> tuple[str, dict]:
 		'''gets all available responses and calls callbacks
 		the parameter '_drain' should only be used internally
-		@return: game end msg supplied from server'''
+		@return: game end msg supplied from server, opponent state on game end'''
 		if self.quitNowEvent.is_set(): return False
 		self.checkThreads()
 		stayConnected = True
-		gameEndMsg = ''
+		gameEndMsg, opponentState = '', None
 		for req in iterQueue(self.responseQueue):
 			stayConnected &= req.payload['stay_connected']
 			if not req.payload['stay_connected']: gameEndMsg = req.payload['game_end_msg']
+			if 'opponent_grid' in req.payload: opponentState = req.payload['opponent_grid']
 			if not _drain: req.callback(req.payload)
 			self.resetAlreadySent(req.command)
 			self.reqQueue.task_done()
 		self.connected &= stayConnected
-		return gameEndMsg
+		return gameEndMsg, opponentState
 	def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
 		assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'
 		assert self.connected or command == COM.CONNECT, 'the session is not conected'

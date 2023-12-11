@@ -108,7 +108,7 @@ class Game:
 
 	def handleRequests(self):
 		assert STAGES.COUNT == 11
-		gameEndMsg = self.session.loadResponses()
+		gameEndMsg, opponentState = self.session.loadResponses()
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.GAME_END]:
 			if '--autoplay-repeat' in sys.argv and not self.session.connected:
 				logging.debug('Autoplay repeat')
@@ -120,6 +120,7 @@ class Game:
 		elif gameEndMsg and self.gameStage != STAGES.GAME_END: # proper game end handled in callback
 			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
 			self.options.gameEndMsg = gameEndMsg
+			if opponentState is not None: self.opponentGrid.updateAfterGameEnd(opponentState)
 			self.newGameStage(STAGES.GAME_END)
 		
 		elif self.gameStage == STAGES.CONNECTING:
