@@ -50,7 +50,7 @@ def game():
 				if not Frontend.Runtime.windowHasFocus: game.options.inputActive = False
 				game.redrawNeeded = True
 
-		game.handleRequests()
+		game.handleConnections()
 		game.drawGame()
 		clockObj.tick(Constants.FPS)
 

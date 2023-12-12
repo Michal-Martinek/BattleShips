@@ -106,9 +106,24 @@ class Game:
 			self.options.gameWon = False
 			self.options.gameEndMsg = res['game_end_msg']
 			self.opponentGrid.updateAfterGameEnd(res['opponent_grid'])
-
-	def handleRequests(self):
-		assert STAGES.COUNT == 11
+	def updateRematch(self, rematchDesired):
+		if self.session.alreadySent[COM.UPDATE_REMATCH]: return
+		self.options.awaitingRematch = True
+		lamda = lambda res: self.rematchCallback(rematchDesired, res)
+		self.session.tryToSend(COM.UPDATE_REMATCH, {'rematch_desired': rematchDesired}, lamda, blocking=False, mustSend=True)
+	def rematchCallback(self, rematchDesired, res):
+		if not res['approved']: return
+		self.options.awaitingRematch = rematchDesired
+	def awaitRematchCallback(self, res):
+		if 'opponent_disconnected' in res and res['opponent_disconnected']: return
+		if not res['changed']: return
+		if res['rematch']:
+	def handleConnections(self):
+		self.session.checkThreads()
+		self.handleResponses()
+		self.spawnReqs()
+	def handleResponses(self):
+		assert len(COM) == 12
 		gameEndMsg, opponentState = self.session.loadResponses()
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.GAME_END]:
 			if '--autoplay-repeat' in sys.argv and not self.session.connected:
@@ -121,9 +136,9 @@ class Game:
 			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
 			self.options.gameEndMsg = gameEndMsg
 			if opponentState is not None and 'ships' in opponentState: self.opponentGrid.updateAfterGameEnd(opponentState)
-			self.newGameStage(STAGES.GAME_END)
-		
-		elif self.gameStage == STAGES.CONNECTING:
+	def spawnReqs(self):
+		assert STAGES.COUNT == 11
+		if self.gameStage == STAGES.CONNECTING:
 			self.session.tryToSend(COM.CONNECT, {'name': self.options.submittedPlayerName()}, self.connectCallback, blocking=False)
 		elif self.gameStage == STAGES.PAIRING:
 			self.session.tryToSend(COM.PAIR, {}, self.pairCallback, blocking=True)

@@ -23,6 +23,7 @@ class ConnectedPlayer:
 		self.gameId: int = 0
 		self.lastReqTime = time.time()
 		self.gameState: dict = {'ready': False}
+		self.awaitingRematch = False
 	def __repr__(self):
 		return f'{self.__class__.__name__}(id={self.id}, gameId={self.gameId}, gameState={self.gameState})'
 	def shootingReady(self):
@@ -143,6 +144,8 @@ class Game:
 				gameWon = all([all(ship['hitted']) for ship in self.getOpponentState(player)['ships']])
 				return True, sunkenShip, gameWon
 		return False, None, False
+	def canRematch(self):
+		return self.gameActive and self.gameStage == STAGES.GAME_END and all([p.awaitingRematch for p in self.players.values()])
 
 
 class Server:
@@ -248,6 +251,10 @@ class Server:
 				self.shootReq(player, game, req)
 			elif req.command == COM.OPPONENT_SHOT:
 				self.opponentShotted(player, game, req)
+			elif req.command == COM.AWAIT_REMATCH:
+				self.awaitRematch(player, game, req)
+			elif req.command == COM.UPDATE_REMATCH:
+				self.handleUpdateRematch(player, game, req)
 			else:
 				asert(False, req, 'unknown command', req.command)
 
@@ -350,15 +357,17 @@ class Server:
 			self._sendResponse(req, {'started': True, 'on_turn': game.playerOnTurn})
 		else:
 			self.addBlockingReq(player, req, {'started': False})
+	def updateGameEndPayload(self, payload, player: ConnectedPlayer, game: Game, *, won=True):
+		payload['opponent_grid'] = game.getOpponentState(player)
+		payload['game_end_msg'] = ('You lost!   :(', 'You won!   :)')[won]
 	def shootReq(self, player: ConnectedPlayer, game: Game, req: Request):
 		asert(player.id == game.playerOnTurn, req, 'only player on turn can shoot')
 		hitted, sunkenShip, gameWon = game.shoot(player, req.payload['pos'])
 		payload = {'hitted': hitted, 'sunken_ship': sunkenShip, 'game_won': gameWon}
 		if gameWon:
 			game.gameStage = STAGES.GAME_END
-			req.setNotStayConnected('You won!   :)')
+			self.updateGameEndPayload(payload, player, game)
 			logging.info(f'Game {game.id} won {player.id}')
-			payload['opponent_grid'] = game.getOpponentState(player)
 		opponent = game.getOpponent(player)
 		if opponent.id in self.blockingReqs:
 			blocking = self.blockingReqs[opponent.id]
@@ -373,7 +382,7 @@ class Server:
 	def sendOpponentShottedRes(self, player: ConnectedPlayer, game: Game, req):
 		pos, lost = game.opponentShottedReq(player)
 		payload = {'shotted': True, 'pos': pos, 'lost': lost}
-		if lost:
+		if lost: self.updateGameEndPayload(payload, player, game, won=False)
 			req.setNotStayConnected('You lost!   :(')
 			payload['opponent_grid'] = game.getOpponentState(player)
 		if isinstance(req, BlockingRequest):
@@ -381,16 +390,32 @@ class Server:
 			self.respondBlockingReq(player, payload, disconnect=True)
 		else:
 			self._sendResponse(req, payload)
+	def awaitRematch(self, player: ConnectedPlayer, game: Game, req: Request):
+		if not game.gameActive:
+			self._sendResponse(req, {'changed': True, 'rematch': False})
+		elif game.canRematch():
+			self._sendResponse(req, {'changed': True, 'rematch': True})
+		else:
+			self.addBlockingReq(player, req, {'changed': False})
+	def handleUpdateRematch(self, player: ConnectedPlayer, game: Game, req: Request):
+		approved = not game.canRematch()
+		if approved: player.awaitingRematch = req.payload['rematch_desired']
+		self._sendResponse(req, {'approved': approved})
+
+	def handleBlockingInInactiveGame(self, game: Game, req: BlockingRequest):
+		if req.command == COM.AWAIT_REMATCH:
+			req.defaultResponse.update({'opponent_disconnected': True})
+		else:
+			req.setNotStayConnected('Opponent disconnected!   :|')
+			req.defaultResponse.update({'opponent_grid': game.getOpponentState(self.players[req.player.id])})
+		self.respondBlockingReq(req.player, useDefault=True)
 	def checkWaitingReqs(self):
 		for req in list(self.blockingReqs.values()):
 			if time.time() - req.timeRecvd > MAX_TIME_FOR_BLOCKING or self.closeEvent.is_set():
 				self.respondBlockingReq(req.player, useDefault=True)
 			elif req.player.inGame:
 				game = self.games[req.player.gameId]
-				if not game.gameActive:
-					req.setNotStayConnected('Opponent disconnected!   :|')
-					req.defaultResponse.update({'opponent_grid': game.getOpponentState(self.players[req.player.id])})
-					self.respondBlockingReq(req.player, useDefault=True)
+				if not game.gameActive: self.handleBlockingInInactiveGame(game, req)
 
 	def newConnectedPlayer(self, playerName):
 		id = self._generateNewID(self.players)
