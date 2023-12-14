@@ -70,18 +70,16 @@ class Session:
 		'''gets all available responses and calls callbacks
 		the parameter '_drain' should only be used internally
 		@return: game end msg supplied from server, opponent state on game end'''
-		if self.quitNowEvent.is_set(): return False
-		self.checkThreads()
-		stayConnected = True
+		if self.quitNowEvent.is_set() or (not self.connected and not any(self.alreadySent)): return '', {}
 		gameEndMsg, opponentState = '', None
 		for req in iterQueue(self.responseQueue):
-			stayConnected &= req.payload['stay_connected']
-			if not req.payload['stay_connected']: gameEndMsg = req.payload['game_end_msg']
-			if 'opponent_grid' in req.payload: opponentState = req.payload['opponent_grid']
+			if not req.payload['stay_connected']:
+				gameEndMsg = req.payload['game_end_msg']
+				self.connected = False
+				if 'opponent_grid' in req.payload: opponentState = req.payload['opponent_grid']
 			if not _drain: req.callback(req.payload)
 			self.resetAlreadySent(req.command)
 			self.reqQueue.task_done()
-		self.connected &= stayConnected
 		return gameEndMsg, opponentState
 	def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
 		assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'

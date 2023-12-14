@@ -79,13 +79,17 @@ class Game:
 		self.gameActive: bool = True
 		self.gameStage: int = STAGES.PLACING if bothPaired else STAGES.PAIRING
 		self.players: dict[int, ConnectedPlayer] = {player1.id: player1, player2.id: player2}
-		self.setPlayersForGame()
+		self.repeatableInit()
+	def repeatableInit(self):
 		self.playerOnTurn: int = 0
 		self.shottedPos = [-1, -1]
+		self.setPlayersForGame()
 	def setPlayersForGame(self):
 		for p in self.players.values():
 			p.inGame = True
 			p.gameId = self.id
+			p.gameState = {'ready': False}
+			p.awaitingRematch = False
 
 	def updateGameState(self, player: ConnectedPlayer, state):
 		# TODO: validation of the game state?
@@ -145,8 +149,15 @@ class Game:
 				return True, sunkenShip, gameWon
 		return False, None, False
 	def canRematch(self):
-		return self.gameActive and self.gameStage == STAGES.GAME_END and all([p.awaitingRematch for p in self.players.values()])
-
+		numWaiting = sum([p.awaitingRematch for p in self.players.values()])
+		return self.gameActive and ((self.gameStage == STAGES.GAME_END and numWaiting == 2) or (self.gameStage == STAGES.PAIRING and numWaiting >= 1))
+	def rematch(self, player: ConnectedPlayer):
+		self.gameStage = STAGES.PAIRING
+		player.awaitingRematch = False
+		if all([not p.awaitingRematch for p in self.players.values()]):
+			self.gameStage = STAGES.PLACING
+			self.repeatableInit()
+			logging.info(f'Rematched game id {self.id}')
 
 class Server:
 	def __init__(self, addr):
@@ -413,10 +424,10 @@ class Server:
 		else:
 			self.respondBlockingReq(player, {'changed': True, 'opponent_rematching': updatedTo})
 	def handleRematchedReq(self, game: Game, player: ConnectedPlayer, req: Request, payload:dict):
-		game.rematch(player)
 		payload.update(self.pairResPayload(game.getOpponent(player), rematched=True))
 		if isinstance(req, BlockingRequest): self.respondBlockingReq(player, payload)
 		else: self._sendResponse(req, payload)
+		game.rematch(player)
 
 	def handleBlockingInInactiveGame(self, game: Game, req: BlockingRequest):
 		if req.command == COM.AWAIT_REMATCH:

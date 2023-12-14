@@ -17,11 +17,11 @@ class Game:
 		self.repeatableInit()
 		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
 			self.newGameStage(STAGES.CONNECTING)
-	def repeatableInit(self):
+	def repeatableInit(self, keepConnection=False):
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
 		self.options.repeatableInit()
-		self.session.repeatebleInit()
+		if not keepConnection: self.session.repeatebleInit()
 	def quit(self):
 		logging.info('Closing due to client quit')
 		if self.session.connected: self.session.disconnect()
@@ -55,9 +55,10 @@ class Game:
 		self.session.connected = True
 		logging.info(f'Connected to server as {self.session.id}')
 		self.newGameStage(STAGES.PAIRING)
-	def pairCallback(self, res):
-		if res['paired']:
-			logging.info(f"Paired with {res['opponent']['id']} - '{res['opponent']['name']}', starting placing stage")
+	def pairCallback(self, res, rematched=False):
+		if ('paired' in res and res['paired']) or (rematched and 'rematched' in res and res['rematched']):
+			verb = 'Rematched' if rematched else 'Paired'
+			logging.info(f"{verb} with {res['opponent']['id']} - '{res['opponent']['name']}'")
 			self.options.opponentName = res['opponent']['name']
 			self.newGameStage(STAGES.PLACING)
 	def opponentReadyCallback(self, res):
@@ -106,22 +107,31 @@ class Game:
 			self.options.gameWon = False
 			self.options.gameEndMsg = res['game_end_msg']
 			self.opponentGrid.updateAfterGameEnd(res['opponent_grid'])
-	def updateRematch(self, rematchDesired):
+
+	def sendUpdateRematch(self, rematchDesired):
 		if self.session.alreadySent[COM.UPDATE_REMATCH]: return
 		self.options.awaitingRematch = True
 		lamda = lambda res: self.rematchCallback(rematchDesired, res)
 		self.session.tryToSend(COM.UPDATE_REMATCH, {'rematch_desired': rematchDesired}, lamda, blocking=False, mustSend=True)
 	def rematchCallback(self, rematchDesired, res):
-		if 'rematched' in res and res['rematched']: pass
+		if 'rematched' in res and res['rematched']:
+			self.execRematch(res)
 	def awaitRematchCallback(self, res):
 		if not res['changed']: return
 		if 'opponent_disconnected' in res and res['opponent_disconnected']:
 			assert res['stay_connected']
 			self.options.rematchPossible = False
 			self.session.disconnect()
-		elif 'rematched' in res and res['rematched']: pass
-		elif 'opponent_rematching' in res and res['opponent_rematching']:
+		elif 'rematched' in res and res['rematched']:
+			self.execRematch(res)
+		elif 'opponent_rematching' in res:
 			self.options.opponentRematching = res['opponent_rematching']
+		else: assert False, 'Changed field expected'
+	def execRematch(self, res: dict):
+		assert 'opponent' in res
+		self.repeatableInit(True)
+		self.pairCallback(res, True)
+
 	def handleConnections(self):
 		self.session.checkThreads()
 		self.handleResponses()
@@ -136,10 +146,11 @@ class Game:
 			return
 		elif self.gameStage == STAGES.CLOSING:
 			self.session.quit()
-		elif gameEndMsg and self.gameStage != STAGES.GAME_END: # proper game end handled in callback
+		elif gameEndMsg and self.gameStage not in [STAGES.GAME_END, STAGES.END_GRID_SHOW]: # NOTE unstandard game end
 			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
 			self.options.gameEndMsg = gameEndMsg
 			if opponentState is not None and 'ships' in opponentState: self.opponentGrid.updateAfterGameEnd(opponentState)
+			self.newGameStage(STAGES.GAME_END)
 	def spawnReqs(self):
 		assert STAGES.COUNT == 11
 		if self.gameStage == STAGES.CONNECTING:
