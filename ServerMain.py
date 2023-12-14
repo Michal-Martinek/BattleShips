@@ -318,24 +318,25 @@ class Server:
 		opponent = possible[0]
 		if opponent.id in self.blockingReqs: assert self.blockingReqs[opponent.id].req.command == COM.PAIR, 'if the opponent _isPairableWith then any blocking req must be a COM.PAIR'
 		return opponent
-	def _pairResPayload(self, opponent: ConnectedPlayer):
-		return {'paired': True, 'opponent': {'id': opponent.id, 'name': opponent.name}}
+	def pairResPayload(self, opponent: ConnectedPlayer, rematched=False):
+		positiveOutcomeStr = 'rematched' if rematched else 'paired'
+		return {positiveOutcomeStr: True, 'opponent': {'id': opponent.id, 'name': opponent.name}}
 	def pairPlayer(self, player: ConnectedPlayer, req: Request):
 		if player.inGame:
 			game = self.games[player.gameId]
 			asert(game.gameStage == STAGES.PAIRING, req, 'Unexpected game stage for !PAIR', game.id)
 			game.gameStage = STAGES.PLACING
-			return self._sendResponse(req, self._pairResPayload(game.getOpponent(player)))
+			return self._sendResponse(req, self.pairResPayload(game.getOpponent(player)))
 		opponent = self.findOpponent(player)
 		if opponent is None:
 			self.addBlockingReq(player, req, {'paired': False})
 		else:
 			bothPaired = False
 			if opponent.id in self.blockingReqs:
-				self.respondBlockingReq(opponent, self._pairResPayload(player))
+				self.respondBlockingReq(opponent, self.pairResPayload(player))
 				bothPaired = True
 			self.addNewGame(player, opponent, bothPaired)
-			self._sendResponse(req, self._pairResPayload(opponent))
+			self._sendResponse(req, self.pairResPayload(opponent))
 	def handleOpponentReady(self, player: ConnectedPlayer, game: Game, req: Request):
 		if req.payload['expected'] ^ (ready := game.getOpponent(player).shootingReady()):
 			return self._sendResponse(req, {'opponent_ready': ready})
@@ -391,20 +392,35 @@ class Server:
 		else:
 			self._sendResponse(req, payload)
 	def awaitRematch(self, player: ConnectedPlayer, game: Game, req: Request):
-		if not game.gameActive:
-			self._sendResponse(req, {'changed': True, 'rematch': False})
-		elif game.canRematch():
-			self._sendResponse(req, {'changed': True, 'rematch': True})
+		if game.canRematch():
+			self.handleRematchedReq(game, player, req, {'changed': True, 'opponent_rematching': True})
+		elif req.payload['expected_opponent_rematch'] ^ (opponent := game.getOpponent(player)).awaitingRematch:
+			self._sendResponse(req, {'changed': True, 'opponent_rematching': opponent.awaitingRematch})
 		else:
 			self.addBlockingReq(player, req, {'changed': False})
 	def handleUpdateRematch(self, player: ConnectedPlayer, game: Game, req: Request):
+		asert(game.gameStage == STAGES.GAME_END, req, 'Unexpected COM.REMATCH in gameStage', game.gameStage)
 		approved = not game.canRematch()
 		if approved: player.awaitingRematch = req.payload['rematch_desired']
-		self._sendResponse(req, {'approved': approved})
+		if game.canRematch(): self.handleRematchedReq(game, player, req, {'approved': approved})
+		else: self._sendResponse(req, {'approved': approved})
+		self.respondAwaitingAfterRematchUpdate(game.getOpponent(player), game, player.awaitingRematch)
+	def respondAwaitingAfterRematchUpdate(self, player: ConnectedPlayer, game: Game, updatedTo: bool):
+		if player.id not in self.blockingReqs: return
+		assert (req := self.blockingReqs[player.id]).command == COM.AWAIT_REMATCH
+		if game.canRematch():
+			self.handleRematchedReq(game, player, req, {'changed': True})
+		else:
+			self.respondBlockingReq(player, {'changed': True, 'opponent_rematching': updatedTo})
+	def handleRematchedReq(self, game: Game, player: ConnectedPlayer, req: Request, payload:dict):
+		game.rematch(player)
+		payload.update(self.pairResPayload(game.getOpponent(player), rematched=True))
+		if isinstance(req, BlockingRequest): self.respondBlockingReq(player, payload)
+		else: self._sendResponse(req, payload)
 
 	def handleBlockingInInactiveGame(self, game: Game, req: BlockingRequest):
 		if req.command == COM.AWAIT_REMATCH:
-			req.defaultResponse.update({'opponent_disconnected': True})
+			req.defaultResponse.update({'changed': True, 'opponent_disconnected': True})
 		else:
 			req.setNotStayConnected('Opponent disconnected!   :|')
 			req.defaultResponse.update({'opponent_grid': game.getOpponentState(self.players[req.player.id])})

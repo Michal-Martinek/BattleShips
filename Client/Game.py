@@ -112,12 +112,16 @@ class Game:
 		lamda = lambda res: self.rematchCallback(rematchDesired, res)
 		self.session.tryToSend(COM.UPDATE_REMATCH, {'rematch_desired': rematchDesired}, lamda, blocking=False, mustSend=True)
 	def rematchCallback(self, rematchDesired, res):
-		if not res['approved']: return
-		self.options.awaitingRematch = rematchDesired
+		if 'rematched' in res and res['rematched']: pass
 	def awaitRematchCallback(self, res):
-		if 'opponent_disconnected' in res and res['opponent_disconnected']: return
 		if not res['changed']: return
-		if res['rematch']:
+		if 'opponent_disconnected' in res and res['opponent_disconnected']:
+			assert res['stay_connected']
+			self.options.rematchPossible = False
+			self.session.disconnect()
+		elif 'rematched' in res and res['rematched']: pass
+		elif 'opponent_rematching' in res and res['opponent_rematching']:
+			self.options.opponentRematching = res['opponent_rematching']
 	def handleConnections(self):
 		self.session.checkThreads()
 		self.handleResponses()
@@ -148,6 +152,8 @@ class Game:
 			self.session.tryToSend(COM.GAME_WAIT, {}, self.gameWaitCallback, blocking=True)
 		elif self.gameStage == STAGES.SHOOTING and self.options.myGridShown:
 			self.session.tryToSend(COM.OPPONENT_SHOT, {}, self.gettingShotCallback, blocking=True)
+		elif self.gameStage in [STAGES.GAME_END, STAGES.END_GRID_SHOW] and self.session.connected and self.options.rematchPossible:
+			self.session.tryToSend(COM.AWAIT_REMATCH, {'expected_opponent_rematch': self.options.opponentRematching}, self.awaitRematchCallback, blocking=True)
 		self.session.spawnConnectionCheck()
 
 	# controls and API -------------------------------------------------
@@ -278,6 +284,10 @@ class Options:
 		self.myGridShown = True
 		self.gameWon = True
 		self.gameEndMsg = 'UNREACHABLE!'
+
+		self.awaitingRematch = False
+		self.rematchPossible = True
+		self.opponentRematching = False
 
 	def addChar(self, c):
 		if c == ' ': c = '_'
