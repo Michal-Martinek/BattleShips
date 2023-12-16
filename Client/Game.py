@@ -199,7 +199,9 @@ class Game:
 			self.changeGridShown(my=res[1] == 0)
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
-			if changed: self.redrawHUD()
+			if changed:
+				self.redrawHUD()
+				if self.options.firstGameWait: self.toggleGameReady()
 		elif self.gameStage == STAGES.SHOOTING:
 			self.shoot(mousePos)
 	def mouseMovement(self, event):
@@ -237,6 +239,7 @@ class Game:
 		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT] and self.grid.allShipsPlaced():
 			logging.info('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
 			if '--start-sunken' in sys.argv: self.grid.startSunken()
+			self.options.firstGameWait = False
 			self.gameReadiness()
 	# drawing --------------------------------
 	def drawGame(self):
@@ -292,6 +295,8 @@ class Options:
 		self.cursor:int = len(self.playerName) # points before char
 		self.inputActive = False
 		self.opponentName = ''
+
+		self.firstGameWait = True
 		self.opponentReady = False
 
 		self.myGridShown = True
