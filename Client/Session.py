@@ -46,6 +46,7 @@ class Session:
 		self.id: int = 0
 		assert len(COM) == 12
 		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.OPPONENT_READY: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False, COM.AWAIT_REMATCH: False, COM.UPDATE_REMATCH: False}
+		self.connected = False # NOTE connected only if active communication w/ server is established and will be kept
 
 	def setAlreadySent(self, comm: COM):
 		assert not self.alreadySent[comm]
@@ -54,6 +55,8 @@ class Session:
 		self.alreadySent[comm] = False
 	def noPendingReqs(self):
 		return not any(self.alreadySent.values())
+	def fullyDisconnected(self) -> bool:
+		return not self.connected and self.noPendingReqs()
 
 	# api --------------------------------------
 	def tryToSend(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool, mustSend=False) -> bool:
@@ -70,7 +73,7 @@ class Session:
 		'''gets all available responses and calls callbacks
 		the parameter '_drain' should only be used internally
 		@return: game end msg supplied from server, opponent state on game end'''
-		if self.quitNowEvent.is_set() or (not self.connected and not any(self.alreadySent)): return '', {}
+		if self.quitNowEvent.is_set() or self.fullyDisconnected(): return '', {}
 		gameEndMsg, opponentState = '', None
 		for req in iterQueue(self.responseQueue):
 			if not req.payload['stay_connected']:
@@ -93,6 +96,7 @@ class Session:
 	def disconnect(self):
 		assert self.connected
 		self.tryToSend(COM.DISCONNECT, {}, lambda res: self.repeatebleInit(), blocking=False, mustSend=True)
+		self.connected = False
 	def quit(self):
 		'''gracefully closes session (recvs last reqs, joins threads), COM.DISCONNECT must have been sent in advance'''
 		while not self.noPendingReqs():
@@ -165,7 +169,7 @@ class Session:
 			logging.error(f'Recvd !ERROR response {req.payload}')
 			raise RuntimeError('Recvd !ERROR response')
 		assert recvdCommand == req.command, 'Response should have the same command'
-		assert self.id == id or req.command == COM.CONNECT, 'The received id is not my id'
+		assert self.id == id or not self.connected, 'The received id is not my id'
 	def _newServerSocket(self, req: Request):
 		req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		req.conn.connect(SERVER_ADDRES)

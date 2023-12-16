@@ -15,8 +15,6 @@ class Game:
 		self.redrawNeeded = True
 		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.repeatableInit()
-		if '--autoplay' in sys.argv or '--autoplay-repeat' in sys.argv:
-			self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self, keepConnection=False):
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
@@ -42,6 +40,8 @@ class Game:
 				self.toggleGameReady()
 		elif self.gameStage in [STAGES.GAME_WAIT, STAGES.SHOOTING]:
 			self.redrawHUD()
+		elif self.gameStage == STAGES.MAIN_MENU:
+			if self.session.connected: self.session.disconnect()
 		logging.debug(f'New game stage: {str(stage)}')
 		self.redrawNeeded = True
 	def changeGridShown(self, my:bool=None):
@@ -139,9 +139,9 @@ class Game:
 	def handleResponses(self):
 		assert len(COM) == 12
 		gameEndMsg, opponentState = self.session.loadResponses()
-		if self.gameStage in [STAGES.MAIN_MENU, STAGES.MULTIPLAYER_MENU, STAGES.GAME_END]:
-			if '--autoplay-repeat' in sys.argv and not self.session.connected:
-				logging.debug('Autoplay repeat')
+		if self.gameStage in [STAGES.MAIN_MENU, STAGES.GAME_END]:
+			if ((rep := '--autoplay-repeat' in sys.argv) or '--autoplay' in sys.argv) and self.session.fullyDisconnected():
+				if rep: logging.debug('Autoplay repeat')
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:

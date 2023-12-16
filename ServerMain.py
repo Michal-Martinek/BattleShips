@@ -271,7 +271,7 @@ class Server:
 
 	def checkConnections(self):
 		for player in list(self.players.values()):
-			if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT:
+			if time.time() - player.lastReqTime > MAX_TIME_FOR_DISCONNECT and player.connected:
 				logging.warning(f'disconnecting player {player.id} due to not receiving requests')
 				if player.id in self.blockingReqs:
 					self.blockingReqs[player.id].setNotStayConnected('Connection timed out')
@@ -395,8 +395,6 @@ class Server:
 		pos, lost = game.opponentShottedReq(player)
 		payload = {'shotted': True, 'pos': pos, 'lost': lost}
 		if lost: self.updateGameEndPayload(payload, player, game, won=False)
-			req.setNotStayConnected('You lost!   :(')
-			payload['opponent_grid'] = game.getOpponentState(player)
 		if isinstance(req, BlockingRequest):
 			assert player.id in self.blockingReqs
 			self.respondBlockingReq(player, payload, disconnect=True)
@@ -431,7 +429,7 @@ class Server:
 
 	def handleBlockingInInactiveGame(self, game: Game, req: BlockingRequest):
 		if req.command == COM.AWAIT_REMATCH:
-			req.defaultResponse.update({'changed': True, 'opponent_disconnected': True})
+			req.defaultResponse.update({'changed': True, 'opponent_disconnected': True}) # NOTE stayConected=True, client then disconnects
 		else:
 			req.setNotStayConnected('Opponent disconnected!   :|')
 			req.defaultResponse.update({'opponent_grid': game.getOpponentState(self.players[req.player.id])})
