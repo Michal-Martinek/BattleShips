@@ -1,7 +1,7 @@
 import socket
 import logging, inspect
 import threading, queue
-import random, time, os
+import random, time, os, sys
 
 from dataclasses import dataclass
 from typing import Union, Optional
@@ -375,6 +375,7 @@ class Server:
 	def shootReq(self, player: ConnectedPlayer, game: Game, req: Request):
 		asert(player.id == game.playerOnTurn, req, 'only player on turn can shoot')
 		hitted, sunkenShip, gameWon = game.shoot(player, req.payload['pos'])
+		if '--instant-win' in sys.argv: gameWon = True
 		payload = {'hitted': hitted, 'sunken_ship': sunkenShip, 'game_won': gameWon}
 		if gameWon:
 			game.gameStage = STAGES.GAME_END
@@ -393,6 +394,7 @@ class Server:
 			self.addBlockingReq(player, req, {'shotted': False})
 	def sendOpponentShottedRes(self, player: ConnectedPlayer, game: Game, req):
 		pos, lost = game.opponentShottedReq(player)
+		if '--instant-win' in sys.argv: lost = True
 		payload = {'shotted': True, 'pos': pos, 'lost': lost}
 		if lost: self.updateGameEndPayload(payload, player, game, won=False)
 		if isinstance(req, BlockingRequest):
