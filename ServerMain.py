@@ -67,7 +67,7 @@ def sendErrorResponse(req: Request, error: str, obj=None): # NOTE doesn't accept
 def asert(cond, req, msg, obj=None):
 	if cond: return
 	caller = inspect.getframeinfo(inspect.stack()[1][0])
-	log = f"{msg}: '{obj}'" if obj is not None else msg
+	log = f"{msg}: '{str(obj)}'" if obj is not None else msg
 	logging.error(f"{os.path.basename(caller.filename)}:{caller.lineno} ASSERTION FAILED: ID{req.playerId} {log}")
 	sendErrorResponse(req, msg, obj)
 	raise PlayerDisconnectIssued(log)

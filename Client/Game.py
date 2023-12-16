@@ -15,6 +15,7 @@ class Game:
 		self.redrawNeeded = True
 		self.gameStage: STAGES = STAGES.MAIN_MENU
 		self.repeatableInit()
+		if '--autoplay' in sys.argv: self.newGameStage(STAGES.CONNECTING)
 	def repeatableInit(self, keepConnection=False):
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
@@ -114,6 +115,7 @@ class Game:
 		lamda = lambda res: self.rematchCallback(rematchDesired, res)
 		self.session.tryToSend(COM.UPDATE_REMATCH, {'rematch_desired': rematchDesired}, lamda, blocking=False, mustSend=True)
 	def rematchCallback(self, rematchDesired, res):
+		if res['approved']: self.options.awaitingRematch = rematchDesired
 		if 'rematched' in res and res['rematched']:
 			self.execRematch(res)
 	def awaitRematchCallback(self, res):
@@ -140,8 +142,8 @@ class Game:
 		assert len(COM) == 12
 		gameEndMsg, opponentState = self.session.loadResponses()
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.GAME_END]:
-			if ((rep := '--autoplay-repeat' in sys.argv) or '--autoplay' in sys.argv) and self.session.fullyDisconnected():
-				if rep: logging.debug('Autoplay repeat')
+			if '--autoplay-repeat' in sys.argv and self.session.fullyDisconnected():
+				logging.debug('Autoplay repeat')
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
