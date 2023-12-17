@@ -29,7 +29,9 @@ class Game:
 		assert STAGES.COUNT == 11
 		assert stage != self.gameStage
 		self.gameStage = stage
+		logging.debug(f'New game stage: {str(stage)}')
 		Frontend.Runtime.resetVars()
+		self.redrawNeeded = True
 		if self.gameStage == STAGES.CONNECTING:
 			self.repeatableInit()
 		elif self.gameStage == STAGES.GAME_END and '--autoplay' in sys.argv:
@@ -38,13 +40,11 @@ class Game:
 			self.redrawHUD()
 			if '--autoplace' in sys.argv:
 				self.grid.autoplace()
-				self.toggleGameReady()
+				if self.options.firstGameWait: self.toggleGameReady()
 		elif self.gameStage in [STAGES.GAME_WAIT, STAGES.SHOOTING]:
 			self.redrawHUD()
 		elif self.gameStage == STAGES.MAIN_MENU:
 			if self.session.connected: self.session.disconnect()
-		logging.debug(f'New game stage: {str(stage)}')
-		self.redrawNeeded = True
 	def changeGridShown(self, my:bool=None):
 		if my is None: my = not self.options.myGridShown
 		self.options.myGridShown = my
@@ -143,7 +143,7 @@ class Game:
 		gameEndMsg, opponentState = self.session.loadResponses()
 		if self.gameStage in [STAGES.MAIN_MENU, STAGES.GAME_END]:
 			if '--autoplay-repeat' in sys.argv and self.session.fullyDisconnected():
-				logging.debug('Autoplay repeat')
+				logging.info('Autoplay repeat')
 				self.newGameStage(STAGES.CONNECTING)
 			return
 		elif self.gameStage == STAGES.CLOSING:
@@ -237,10 +237,13 @@ class Game:
 				self.shootReq(gridPos)
 	def toggleGameReady(self):
 		if self.gameStage in [STAGES.PLACING, STAGES.GAME_WAIT] and self.grid.allShipsPlaced():
-			logging.info('toggling game readiness to ' + ('ready' if self.gameStage == STAGES.PLACING else 'waiting'))
-			if '--start-sunken' in sys.argv: self.grid.startSunken()
 			self.options.firstGameWait = False
 			self.gameReadiness()
+	def toggleRematch(self):
+		if self.gameStage == STAGES.GAME_END and self.options.rematchPossible and self.session.connected:
+			logging.debug(f'Rematch now {"in" * self.options.awaitingRematch}active')
+			self.sendUpdateRematch(not self.options.awaitingRematch)
+
 	# drawing --------------------------------
 	def drawGame(self):
 		assert STAGES.COUNT == 11
@@ -400,11 +403,6 @@ class Grid:
 				self.ships.append(ship)
 				self.shipSizes[ship.size] -= 1
 			assert self.allShipsPlaced(), 'autoplace is expected to place all ships'
-	def startSunken(self):
-		for ship in self.ships:
-			ship.hitted = [True] * ship.size
-			if ship.size == 4: ship.hitted = [True, False, True, False]
-
 	def pickUpShip(self, mousePos) -> bool:
 		ship = self._getClickedShip(mousePos)
 		if ship:
