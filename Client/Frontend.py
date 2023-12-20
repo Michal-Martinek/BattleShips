@@ -307,6 +307,7 @@ IMG_HUD_READY_BTNS = [[loadImage('Buttons', f'ready_btn_{color}{hover}.png') for
 IMG_HUD_SHIPBOXES = [loadImage('Shipboxes', f'shipbox_{i}.png') for i in range(1, 5)] + [loadImage('Shipboxes', 'shipbox_hovered.png')]
 IMG_HUD_SHIPBOX_COUNTS = [loadImage('Shipboxes', f'counts_{i}.png') for i in range(5)]
 IMG_HUD_GAME_END = [loadImage(f'HUD_{s}.png') for s in ('lost', 'won')]
+IMG_REMATCH = [loadImage('Buttons', f'rematch_btn_{c}.png') for c in ('yellow', 'green', 'red', 'grey')]
 
 IMG_HEADER = genHeader()
 IMG_HUD = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))

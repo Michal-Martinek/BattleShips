@@ -32,6 +32,8 @@ for i, r in enumerate(THUMBNAIL_OUTER_RECTS):
 	r.midbottom = THUMBNAIL_GRID_RECTS[i].midbottom
 	r.move_ip(0, THUMBNAIL_MARGIN)
 
+REMATCH_BTN_RECT = Rect(SCREEN_WIDTH // 2 - 143 // 2, THUMBNAIL_OUTER_RECTS[0].bottom + 22, 143, 41)
+
 GRID_Y_OFFSET = HUD_RECT.bottom + 8
 MULTIPLAYER_INPUT_BOX = Rect(150, 320, 300, 60)
 

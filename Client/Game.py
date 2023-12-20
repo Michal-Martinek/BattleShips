@@ -118,8 +118,10 @@ class Game:
 		if res['approved']: self.options.awaitingRematch = rematchDesired
 		if 'rematched' in res and res['rematched']:
 			self.execRematch(res)
+		self.redrawNeeded = True
 	def awaitRematchCallback(self, res):
 		if not res['changed']: return
+		self.redrawNeeded = True
 		if 'opponent_disconnected' in res and res['opponent_disconnected']:
 			assert res['stay_connected']
 			self.options.rematchPossible = False
@@ -197,6 +199,8 @@ class Game:
 		elif self.gameStage == STAGES.GAME_END and (res := Frontend.thumbnailCollide(mousePos, True))[0]:
 			self.newGameStage(STAGES.END_GRID_SHOW)
 			self.changeGridShown(my=res[1] == 0)
+		elif self.gameStage == STAGES.GAME_END and Constants.REMATCH_BTN_RECT.collidepoint(mousePos):
+			self.toggleRematch()
 		elif self.gameStage == STAGES.PLACING:
 			changed = self.grid.mouseClick(mousePos, rightClick)
 			if changed:
@@ -243,6 +247,7 @@ class Game:
 		if self.gameStage == STAGES.GAME_END and self.options.rematchPossible and self.session.connected:
 			logging.debug(f'Rematch now {"in" * self.options.awaitingRematch}active')
 			self.sendUpdateRematch(not self.options.awaitingRematch)
+			self.redrawNeeded = True
 
 	# drawing --------------------------------
 	def drawGame(self):
@@ -282,6 +287,9 @@ class Game:
 			Frontend.render(Frontend.FONT_ARIAL_SMALL, (80, 300), 'Press enter to exit')
 			self.grid.drawThumbnail(self.options.submittedPlayerName())
 			self.opponentGrid.drawThumbnail(self.options.opponentName)
+			img = Frontend.IMG_REMATCH[self.options.awaitingRematch + 2 * self.options.opponentRematching]
+			if not self.options.rematchPossible: img = Frontend.IMG_REMATCH[-1]
+			Frontend.blit(img, Constants.REMATCH_BTN_RECT)
 	def redrawHUD(self):
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
 		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage, not self.options.gameWon ^ self.options.myGridShown)
