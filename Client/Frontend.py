@@ -254,7 +254,7 @@ def genPlayerNames(options, gameStage: STAGES) -> list[pygame.Rect]:
 	iconRects = [r.copy() for r in Constants.HUD_ICON_RECTS_DEFAULTS]
 	leftText = ["Opponent's grid", 'Your grid'][options.myGridShown] if gameStage == STAGES.END_GRID_SHOW else options.submittedPlayerName()
 	iconRects[0].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[0], leftText, (255, 255, 255), surf=IMG_HUD).right
-	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.submittedPlayerName() if options.myGridShown else options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
+	iconRects[1].x += render(FONT_ARIAL_PLAYERNAME, Constants.HUD_PLAYERNAME_OFFSETS[1], options.submittedPlayerName() if gameStage == STAGES.END_GRID_SHOW and options.myGridShown else options.opponentName, (255, 255, 255), surf=IMG_HUD, fitMode='topright').left
 	return iconRects
 def genIcons(iconRects: list[pygame.Rect], options, gameStage: STAGES, allShipsPlaced, gameWon):
 	rightImgMap = {STAGES.SHOOTING: IMG_HUD_AIM if options.myGridShown else IMG_HUD_SHOOTING, STAGES.END_GRID_SHOW: IMG_HUD_GAME_END[gameWon], None: IMG_HUD_READY if options.opponentReady else IMG_HUD_PLACING}

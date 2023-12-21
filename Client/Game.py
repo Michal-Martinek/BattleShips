@@ -31,6 +31,7 @@ class Game:
 		self.gameStage = stage
 		logging.debug(f'New game stage: {str(stage)}')
 		Frontend.Runtime.resetVars()
+		self.options.hudMsg = ''
 		self.redrawNeeded = True
 		if self.gameStage == STAGES.CONNECTING:
 			self.repeatableInit()
@@ -62,6 +63,7 @@ class Game:
 			logging.info(f"{verb} with {res['opponent']['id']} - '{res['opponent']['name']}'")
 			self.options.opponentName = res['opponent']['name']
 			self.newGameStage(STAGES.PLACING)
+			self.options.hudMsg = f"{verb} with {res['opponent']['name']}"
 	def opponentReadyCallback(self, res):
 		self.options.opponentReady = res['opponent_ready']
 		self.redrawHUD()
@@ -184,6 +186,7 @@ class Game:
 		if rightClick and self.gameStage != STAGES.PLACING: return
 		if mousePos[1] <= Constants.HUD_RECT.bottom: self.grid.removeShipInCursor()
 		self.redrawNeeded = True
+		self.options.hudMsg = ''
 		if Constants.HEADER_CLOSE_RECT.collidepoint(mousePos):
 			self.quit()
 		elif Constants.HEADER_MINIMIZE_RECT.collidepoint(mousePos):
@@ -250,6 +253,9 @@ class Game:
 			self.redrawNeeded = True
 
 	# drawing --------------------------------
+	def drawHUDMsg(self, text=None):
+		if text is None: text = self.options.hudMsg
+		Frontend.render(Frontend.FONT_ARIAL_MSGS, Constants.HUD_RECT.midbottom, text, (255, 255, 255), (40, 40, 40), (255, 255, 255), 2, 8, fitMode='midtop', border_bottom_left_radius=10, border_bottom_right_radius=10)
 	def drawGame(self):
 		assert STAGES.COUNT == 11
 		if not self.redrawNeeded or self.gameStage == STAGES.CLOSING: return
@@ -257,10 +263,10 @@ class Game:
 		drawHud = True
 		if self.gameStage == STAGES.PLACING:
 			self.grid.draw(flying=True)
+			if self.options.hudMsg: self.drawHUDMsg()
 		elif self.gameStage == STAGES.GAME_WAIT:
 			self.grid.draw()
-			text = f" Waiting for opponent.{'.' * Ship.animationStage:<2}"
-			Frontend.render(Frontend.FONT_ARIAL_MSGS, Constants.HUD_RECT.midbottom, text, (255, 255, 255), (40, 40, 40), (255, 255, 255), 2, 8, fitMode='midtop', border_bottom_left_radius=10, border_bottom_right_radius=10)
+			self.drawHUDMsg(f" Waiting for opponent.{'.' * Ship.animationStage:<2}")
 		elif self.gameStage in [STAGES.SHOOTING, STAGES.END_GRID_SHOW]:
 			[self.opponentGrid, self.grid][self.options.myGridShown].draw(shots=True)
 		else:
@@ -309,6 +315,7 @@ class Options:
 
 		self.firstGameWait = True
 		self.opponentReady = False
+		self.hudMsg = ''
 
 		self.myGridShown = True
 		self.gameWon = True
