@@ -184,8 +184,8 @@ def drawThumbnailName(isOpponentGrid: bool, playerName: str, gridRect: pygame.Re
 		nameColor = (255, 255, 255)
 	render(FONT_ARIAL_MSGS, gridRect.move(0, -2).midtop, playerName, nameColor, fitMode='midbottom')
 
-def drawBackground():
-	Runtime.display.blit(IMG_BACKGROUND, (0, Constants.HEADER_HEIGHT))
+def drawBackground(offset):
+	Runtime.display.blit(IMG_BACKGROUND, (offset, Constants.HEADER_HEIGHT))
 
 def _convertRect(rect, labelDims: pygame.Rect, boundaryPadding, fitMode='topleft') -> tuple[pygame.Rect, pygame.Rect, pygame.Rect]:
 	'''@return: box rect (unpadded), label blit loc, blit area on the label'''
@@ -312,3 +312,4 @@ IMG_REMATCH = [loadImage('Buttons', f'rematch_btn_{c}.png') for c in ('yellow', 
 IMG_HEADER = genHeader()
 IMG_HUD = pygame.Surface((Constants.HUD_RECT.w, Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT))
 IMG_BACKGROUND = genBackground()
+IMG_TRANSITION = loadImage('transition.png')

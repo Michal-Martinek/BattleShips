@@ -20,6 +20,7 @@ class Game:
 		self.grid = Grid(True)
 		self.opponentGrid = Grid(False)
 		self.options.repeatableInit()
+		self.transition: Transition = None
 		if not keepConnection: self.session.repeatebleInit()
 	def quit(self):
 		logging.info('Closing due to client quit')
@@ -46,9 +47,12 @@ class Game:
 			self.redrawHUD()
 		elif self.gameStage == STAGES.MAIN_MENU:
 			if self.session.connected: self.session.disconnect()
-	def changeGridShown(self, my:bool=None):
+	def changeGridShown(self, my:bool=None, *, transition=False):
 		if my is None: my = not self.options.myGridShown
-		self.options.myGridShown = my
+		if transition:
+			assert self.gameStage == STAGES.SHOOTING
+			self.transition = Transition(my)
+		else: self.options.myGridShown = my
 		self.redrawHUD()
 
 	# requests -------------------------------------------------
@@ -94,7 +98,7 @@ class Game:
 	def shootCallback(self, gridPos, res):
 		hitted, sunkenShip, gameWon = res['hitted'], Ship.fromDict(res['sunken_ship']), res['game_won']
 		self.opponentGrid.gotShotted(gridPos, hitted, sunkenShip)
-		self.changeGridShown()
+		self.changeGridShown(transition=not gameWon)
 		if gameWon:
 			self.newGameStage(STAGES.GAME_END)
 			logging.info('Game won')
@@ -103,7 +107,7 @@ class Game:
 	def gettingShotCallback(self, res):
 		if not res['shotted']: return
 		self.grid.gotShotted(res['pos'])
-		self.changeGridShown()
+		self.changeGridShown(transition=not res['lost'])
 		if res['lost']:
 			logging.info('Game lost')
 			self.newGameStage(STAGES.GAME_END)
@@ -251,14 +255,24 @@ class Game:
 			logging.debug(f'Rematch now {"in" * self.options.awaitingRematch}active')
 			self.sendUpdateRematch(not self.options.awaitingRematch)
 			self.redrawNeeded = True
+	def updateTransition(self) -> int:
+		if not self.transition: return 0.
+		offset = self.transition.getGridOffset()
+		if state := self.transition.update(offset):
+			if state == 1:
+				self.changeGridShown()
+			else:
+				self.transition = None
+				return 0.
+		return offset
 
 	# drawing --------------------------------
 	def drawHUDMsg(self, text=None):
 		if text is None: text = self.options.hudMsg
 		Frontend.render(Frontend.FONT_ARIAL_MSGS, Constants.HUD_RECT.midbottom, text, (255, 255, 255), (40, 40, 40), (255, 255, 255), 2, 8, fitMode='midtop', border_bottom_left_radius=10, border_bottom_right_radius=10)
-	def drawGame(self):
+	def drawGame(self, transitionOffset):
 		assert STAGES.COUNT == 11
-		if not self.redrawNeeded or self.gameStage == STAGES.CLOSING: return
+		if (not self.redrawNeeded and transitionOffset == 0) or self.gameStage == STAGES.CLOSING: return
 		self.redrawNeeded = False
 		drawHud = True
 		if self.gameStage == STAGES.PLACING:
@@ -268,7 +282,8 @@ class Game:
 			self.grid.draw()
 			self.drawHUDMsg(f" Waiting for opponent.{'.' * Ship.animationStage:<2}")
 		elif self.gameStage in [STAGES.SHOOTING, STAGES.END_GRID_SHOW]:
-			[self.opponentGrid, self.grid][self.options.myGridShown].draw(shots=True)
+			[self.opponentGrid, self.grid][self.options.myGridShown].draw(shots=True, offset=transitionOffset)
+			if transitionOffset: self.transition.draw(transitionOffset)
 		else:
 			drawHud = False
 			self.drawStatic()
@@ -300,6 +315,33 @@ class Game:
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
 		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage, not self.options.gameWon ^ self.options.myGridShown)
 		self.redrawNeeded = True
+
+class Transition:
+	DURATION = 3000 # ms
+	TRANSITION_WIDTH = Frontend.IMG_TRANSITION.get_width()
+	GRID_WIDTH = Constants.SCREEN_WIDTH
+	def __init__(self, toMyGrid: bool):
+		self.direction = 1 if toMyGrid else -1
+		self.firstHalf = True
+		self.startTime = pygame.time.get_ticks()
+	def __getRawOffset(self):
+		x = (pygame.time.get_ticks() - self.startTime) / self.DURATION
+		y = x
+		return int(y * self.direction * self.TRANSITION_WIDTH)
+	def getGridOffset(self) -> int:
+		off = self.__getRawOffset()
+		if not self.firstHalf: off -= self.direction * (self.TRANSITION_WIDTH + self.GRID_WIDTH)
+		return off
+	def update(self, offset) -> int:
+		if self.firstHalf and abs(offset) > self.GRID_WIDTH:
+			self.firstHalf = False
+			return 1
+		if not self.firstHalf and offset * self.direction >= 0: return 2
+		return 0
+	def draw(self, offset):
+		gridOnLeft = (self.direction == 1) ^ self.firstHalf
+		offset += gridOnLeft * self.GRID_WIDTH
+		Frontend.blit(Frontend.IMG_TRANSITION, (offset, Constants.SCREEN_HEIGHT), rectAttr='bottomleft' if gridOnLeft else 'bottomright')
 
 class Options:
 	'''Class responsible for loading, holding and storing client side options,
@@ -497,21 +539,21 @@ class Grid:
 				if shot == SHOTS.HITTED: self.shots[y][x] = SHOTS.HITTED_SUNKEN
 
 	# drawing -----------------------------------------------
-	def drawShot(self, color, x, y, *, thumbRect:Rect=None):
-		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET) if thumbRect is None else (thumbRect.x + Constants.THUMBNAIL_SPACINGS * x + Constants.THUMBNAIL_SPACINGS // 2 + 1, thumbRect.y + Constants.THUMBNAIL_SPACINGS * y + Constants.THUMBNAIL_SPACINGS // 2 + 1)
+	def drawShot(self, color, x, y, offset, *, thumbRect:Rect=None):
+		pos = (x * Constants.GRID_X_SPACING + Constants.GRID_X_SPACING // 2 + offset, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_SPACING // 2 + Constants.GRID_Y_OFFSET) if thumbRect is None else (thumbRect.x + Constants.THUMBNAIL_SPACINGS * x + Constants.THUMBNAIL_SPACINGS // 2 + 1, thumbRect.y + Constants.THUMBNAIL_SPACINGS * y + Constants.THUMBNAIL_SPACINGS // 2 + 1)
 		Frontend.drawCircle(color, pos, (Constants.GRID_X_SPACING if thumbRect is None else Constants.THUMBNAIL_SPACINGS) // 4)
-	def drawShots(self, *, thumbRect:Rect=None):
+	def drawShots(self, offset=0, *, thumbRect:Rect=None):
 		colors = {SHOTS.NOT_HITTED: (11, 243, 255)}
 		if not self.isLocal: colors.update({SHOTS.HITTED: (255, 0, 0), SHOTS.BLOCKED: (128, 128, 128)})
 		if thumbRect is not None: colors.update({SHOTS.HITTED: (255, 0, 0), SHOTS.HITTED_SUNKEN: (255, 0, 0), SHOTS.NOT_SHOTTED: (0, 0, 0)})
 		for y, lineShotted in enumerate(self.shots):
 			for x, shot in enumerate(lineShotted):
 				if shot in colors and (shot != SHOTS.NOT_SHOTTED or self.localGridShotted((x, y), update=False)[0]):
-					self.drawShot(colors[shot], x, y, thumbRect=thumbRect)
-	def draw(self, *, flying=False, shots=False):
-		Frontend.drawBackground()
-		for ship in self.ships: ship.draw()
-		if shots: self.drawShots()
+					self.drawShot(colors[shot], x, y, offset, thumbRect=thumbRect)
+	def draw(self, *, flying=False, shots=False, offset=0):
+		Frontend.drawBackground(offset)
+		for ship in self.ships: ship.draw(offset)
+		if shots: self.drawShots(offset=offset)
 		if flying and self.flyingShip.size: self.flyingShip.draw()
 	def _drawThumbBackground(self, rect: pygame.Rect):
 		Frontend.drawRect(rect, (0, 0, 255))
@@ -620,8 +662,9 @@ class Ship:
 			cls.animationDirection = True
 		elif cls.animationStage == 2:
 			cls.animationDirection = False
-	def draw(self):
+	def draw(self, offset=0):
 		img = Frontend.getFrame(self.size, self.horizontal, self.hitted, self.animationStage)
 		rect = img.get_rect()
 		rect.center = self.realRect.center
+		rect.x += offset
 		Frontend.blit(img, rect)

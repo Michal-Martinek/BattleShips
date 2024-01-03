@@ -51,7 +51,8 @@ def game():
 				game.redrawNeeded = True
 
 		game.handleConnections()
-		game.drawGame()
+		transitionOffset = game.updateTransition()
+		game.drawGame(transitionOffset)
 		clockObj.tick(Constants.FPS)
 
 def main():
