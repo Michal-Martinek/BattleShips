@@ -282,10 +282,10 @@ def prepareImgHUD():
 	drawRect((0, -1, Constants.HUD_RECT.w, Constants.HUD_RECT.h), (40, 40, 40), (255, 255, 255), 2, surf=IMG_HUD, border_bottom_left_radius=Constants.HUD_BOUNDARY_RAD, border_bottom_right_radius=Constants.HUD_BOUNDARY_RAD)
 	pygame.draw.line(IMG_HUD, (255, 255, 255), (0, 0), (Constants.HUD_RECT.w, 0), 1)
 	IMG_HUD.set_colorkey(COLORKEY)
-def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES, gameWon: bool):
+def genHUD(options, shipSizes: dict[int, int], gameStage: STAGES, gameWon: bool, inTransition: bool):
 	prepareImgHUD()
 	iconRects = genPlayerNames(options, gameStage)
-	genIcons(iconRects, options, gameStage, sum(shipSizes.values()) == 0, gameWon)
+	if not inTransition: genIcons(iconRects, options, gameStage, sum(shipSizes.values()) == 0, gameWon)
 	genShipboxes(shipSizes, gameStage)
 def genBackground() -> pygame.Surface:
 	cross = loadImage('grid-cross.png')
@@ -294,7 +294,6 @@ def genBackground() -> pygame.Surface:
 	for y in range(1, Constants.GRID_HEIGHT):
 		for x in range(1, Constants.GRID_WIDTH):
 			blit(cross, (x * Constants.GRID_X_SPACING, y * Constants.GRID_Y_SPACING + Constants.GRID_Y_OFFSET - Constants.HEADER_HEIGHT), rectAttr='center', surf=surf)
-	pygame.draw.lines(surf, (255, 255, 255), False, [(0, 0), (0, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, surf.get_height()-1), (Constants.SCREEN_WIDTH-1, 0)])
 	return surf
 
 IMG_HEADER_CROSS = loadImage('header_close.png')

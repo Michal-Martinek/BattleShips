@@ -88,8 +88,8 @@ class Game:
 	def gameWaitCallback(self, res):
 		if res['started']:
 			self.grid.initShipSizes()
-			self.changeGridShown(res['on_turn'] != self.session.id)
 			self.newGameStage(STAGES.SHOOTING)
+			self.changeGridShown(res['on_turn'] != self.session.id, transition=res['on_turn'] == self.session.id)
 			logging.info('Shooting started')
 	def shootReq(self, gridPos):
 		assert self.gameStage == STAGES.SHOOTING
@@ -242,7 +242,7 @@ class Game:
 			self.redrawNeeded |= pygame.display.get_active()
 			Ship.advanceAnimations()
 	def shoot(self, mousePos):
-		if self.gameStage == STAGES.SHOOTING and not self.options.myGridShown:
+		if self.gameStage == STAGES.SHOOTING and not self.options.myGridShown and not self.transition:
 			gridPos = self.opponentGrid.shoot(mousePos)
 			if gridPos:
 				self.shootReq(gridPos)
@@ -263,6 +263,7 @@ class Game:
 				self.changeGridShown()
 			else:
 				self.transition = None
+				self.redrawHUD()
 				return 0.
 		return offset
 
@@ -288,7 +289,9 @@ class Game:
 			drawHud = False
 			self.drawStatic()
 		Frontend.drawHeader()
-		if drawHud: Frontend.drawHUD()
+		if drawHud:
+			pygame.draw.lines(Frontend.Runtime.display, (255, 255, 255), False, [(0, Constants.HEADER_HEIGHT), (0, Constants.SCREEN_HEIGHT-1), (Constants.SCREEN_WIDTH-1, Constants.SCREEN_HEIGHT-1), (Constants.SCREEN_WIDTH-1, Constants.HEADER_HEIGHT)])
+			Frontend.drawHUD()
 		Frontend.update()
 	def drawStatic(self):
 		assert STAGES.COUNT == 11
@@ -313,11 +316,11 @@ class Game:
 			Frontend.blit(img, Constants.REMATCH_BTN_RECT)
 	def redrawHUD(self):
 		grid = self.grid if self.options.myGridShown else self.opponentGrid
-		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage, not self.options.gameWon ^ self.options.myGridShown)
+		Frontend.genHUD(self.options, grid.shipSizes, self.gameStage, not self.options.gameWon ^ self.options.myGridShown, bool(self.transition))
 		self.redrawNeeded = True
 
 class Transition:
-	DURATION = 3000 # ms
+	DURATION = 4000 # ms
 	TRANSITION_WIDTH = Frontend.IMG_TRANSITION.get_width()
 	GRID_WIDTH = Constants.SCREEN_WIDTH
 	def __init__(self, toMyGrid: bool):
@@ -326,8 +329,9 @@ class Transition:
 		self.startTime = pygame.time.get_ticks()
 	def __getRawOffset(self):
 		x = (pygame.time.get_ticks() - self.startTime) / self.DURATION
-		y = x
-		return int(y * self.direction * self.TRANSITION_WIDTH)
+		y = 6 * x ** 5 - 15 * x ** 4 + 10 * x ** 3
+		y *= self.TRANSITION_WIDTH + self.GRID_WIDTH
+		return int(y * self.direction)
 	def getGridOffset(self) -> int:
 		off = self.__getRawOffset()
 		if not self.firstHalf: off -= self.direction * (self.TRANSITION_WIDTH + self.GRID_WIDTH)
