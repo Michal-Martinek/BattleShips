@@ -31,11 +31,7 @@ SERVER_ADDRES = ('192.168.0.159', 1250)
 
 class Session:
 	def __init__(self):
-		self.id: int = 0
-		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False}
-		self.lastReqTime = 0.0
-		self.connected = False
-		self.properlyClosed = False
+		self.repeatebleInit()
 
 		self.reqQueue: Queue[Request] = Queue()
 		self.requestsToRecv: Queue[Request] = Queue()
@@ -46,15 +42,21 @@ class Session:
 		self.sendThread.start()
 		self.recvThread = threading.Thread(target=lambda: runFuncLogged(self.recvLoop), name='Thread-Recv', daemon=True)
 		self.recvThread.start()
+	def repeatebleInit(self):
+		self.id: int = 0
+		assert len(COM) == 12
+		self.alreadySent: dict[COM, bool] = {COM.CONNECT: False, COM.CONNECTION_CHECK: False, COM.PAIR: False, COM.OPPONENT_READY: False, COM.GAME_READINESS: False, COM.GAME_WAIT: False, COM.SHOOT: False, COM.OPPONENT_SHOT: False, COM.DISCONNECT: False, COM.AWAIT_REMATCH: False, COM.UPDATE_REMATCH: False}
+		self.connected = False # NOTE connected only if active communication w/ server is established and will be kept
 
 	def setAlreadySent(self, comm: COM):
 		assert not self.alreadySent[comm]
 		self.alreadySent[comm] = True
 	def resetAlreadySent(self, comm: COM):
-		assert self.alreadySent[comm]
 		self.alreadySent[comm] = False
 	def noPendingReqs(self):
 		return not any(self.alreadySent.values())
+	def fullyDisconnected(self) -> bool:
+		return not self.connected and self.noPendingReqs()
 
 	# api --------------------------------------
 	def tryToSend(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool, mustSend=False) -> bool:
@@ -67,23 +69,25 @@ class Session:
 			raise RuntimeError("Request specified with 'mustSent' could not be sent due to request being already sent")
 		return sent
 
-	def loadResponses(self, *, _drain=False) -> bool:
+	def loadResponses(self, *, _drain=False) -> tuple[str, dict]:
 		'''gets all available responses and calls callbacks
-		the parameter '_drain' should only be used internally'''
-		if self.quitNowEvent.is_set(): return False
-		self.checkThreads()
-		stayConnected = True
+		the parameter '_drain' should only be used internally
+		@return: game end msg supplied from server, opponent state on game end'''
+		if self.quitNowEvent.is_set() or self.fullyDisconnected(): return '', {}
+		gameEndMsg, opponentState = '', None
 		for req in iterQueue(self.responseQueue):
-			stayConnected = stayConnected and req.payload['stay_connected']
+			if not req.payload['stay_connected']:
+				gameEndMsg = req.payload['game_end_msg']
+				self.connected = False
+				if 'opponent_grid' in req.payload: opponentState = req.payload['opponent_grid']
 			if not _drain: req.callback(req.payload)
 			self.resetAlreadySent(req.command)
 			self.reqQueue.task_done()
-		return stayConnected
+		return gameEndMsg, opponentState
 	def _putReq(self, command: COM, payload: dict, callback: typing.Callable, *, blocking: bool):
 		assert isinstance(command, enum.Enum) and isinstance(command, str) and isinstance(payload, dict) and callable(callback), 'the request does not meet expected properties'
 		assert self.connected or command == COM.CONNECT, 'the session is not conected'
 		assert self.id != 0 or command == COM.CONNECT, 'self.id is invalid for sending this request'
-		self.lastReqTime = time.time()
 		self.reqQueue.put(Request(command, payload, callback, blocking))
 	# checks and closing -----------------------
 	def spawnConnectionCheck(self):
@@ -91,29 +95,16 @@ class Session:
 			self.tryToSend(COM.CONNECTION_CHECK, {}, lambda res: None, blocking=True)
 	def disconnect(self):
 		assert self.connected
-		self.tryToSend(COM.DISCONNECT, {}, lambda res: None, blocking=False, mustSend=True)
+		self.tryToSend(COM.DISCONNECT, {}, lambda res: self.repeatebleInit(), blocking=False, mustSend=True)
 		self.connected = False
-	def _awaitNoPendingReqs(self):
-		'''drains all responses untill there are no pending requests'''
+	def quit(self):
+		'''gracefully closes session (recvs last reqs, joins threads), COM.DISCONNECT must have been sent in advance'''
 		while not self.noPendingReqs():
 			self.loadResponses(_drain=True)
-	def quit(self, must=False):
-		'''tries to close session, if 'must' it blocks untill closed
-		  if it gets to actually closing, the disconnect must have been sent in advance'''
-		if not self.properlyClosed:
-			if self.noPendingReqs() or must:
-				self._awaitNoPendingReqs()
-				assert not self.connected, 'the session is still connected'
-				self.quitNowEvent.set()
-				self.properlyClosed = self.joinThreads(must=must)
-				if must: assert self.properlyClosed
-	def joinThreads(self, must) -> bool:
-		tmout = None if must else 0.0
-		self.sendThread.join(timeout=tmout)
-		if self.sendThread.is_alive(): return False
-		self.recvThread.join(timeout=tmout)
-		if self.recvThread.is_alive(): return False
-		return True
+		assert not self.connected, 'the session is still connected'
+		self.quitNowEvent.set()
+		self.sendThread.join()
+		self.recvThread.join()
 	def checkThreads(self):
 		if not self.sendThread.is_alive():
 			raise RuntimeError('Thread-Send ended')
@@ -178,7 +169,7 @@ class Session:
 			logging.error(f'Recvd !ERROR response {req.payload}')
 			raise RuntimeError('Recvd !ERROR response')
 		assert recvdCommand == req.command, 'Response should have the same command'
-		assert self.id == id or req.command == COM.CONNECT, 'The received id is not my id'
+		assert self.id == id or not self.connected, 'The received id is not my id'
 	def _newServerSocket(self, req: Request):
 		req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		req.conn.connect(SERVER_ADDRES)

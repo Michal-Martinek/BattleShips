@@ -1,20 +1,23 @@
 from enum import Enum, IntEnum, auto
 
 class STAGES(IntEnum):
+	MAIN_MENU = auto()
+	MULTIPLAYER_MENU = auto()
 	CONNECTING = auto()
 	PAIRING = auto()
 	PLACING = auto()
 	GAME_WAIT = auto()
 	SHOOTING = auto()
-	GETTING_SHOT = auto()
-	WON = auto()
-	LOST = auto()
+	GAME_END = auto()
+	END_GRID_SHOW = auto()
 	CLOSING = auto()
+
+	COUNT = auto()
 
 class SHOTS(IntEnum):
 	NOT_SHOTTED = auto()
 	HITTED = auto()
-	HITTED_WHOLE = auto()
+	HITTED_SUNKEN = auto()
 	NOT_HITTED = auto()
 	BLOCKED = auto()
 	SHOTTED_UNKNOWN = auto()
@@ -23,10 +26,13 @@ class COM(str, Enum):
 	CONNECT = '!CONNECT'
 	CONNECTION_CHECK = '!CONNECTION_CHECK'
 	PAIR = '!PAIR'
+	OPPONENT_READY = '!OPPONENT_READY'
 	GAME_READINESS = '!GAME_READINESS'
 	GAME_WAIT = '!GAME_WAIT'
 	SHOOT = '!SHOOT'
 	OPPONENT_SHOT = '!OPPONENT_SHOT'
+	AWAIT_REMATCH = '!AWAIT_REMATCH'
+	UPDATE_REMATCH = '!UPDATE_REMATCH'
 
 	DISCONNECT = '!DISCONNECT'
 	ERROR = '!ERROR'
