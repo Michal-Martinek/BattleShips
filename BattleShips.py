@@ -1,5 +1,7 @@
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+os.chdir(os.path.dirname(__file__))
+
 import pygame
 import logging
 from Client import Game, Constants

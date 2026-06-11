@@ -3,6 +3,8 @@ import logging, inspect
 import threading, queue
 import random, time, os, sys
 
+os.chdir(os.path.dirname(__file__))
+
 from dataclasses import dataclass
 from typing import Union, Optional
 
@@ -477,7 +479,9 @@ def serverMain():
 	ADDR = (socket.gethostbyname(socket.gethostname()), 1250)
 	server = Server(ADDR)
 	logging.info(f'server ready and listening at {ADDR[0]}:{ADDR[1]}')
-
+	with open('logs/LAN_server_addr.txt', 'w') as f:
+		f.write(f'{ADDR[0]}:{ADDR[1]}\n')
+	
 	closeNow = False
 	try:
 		while server.acceptThread.is_alive() and server.waitingReqsThread.is_alive():

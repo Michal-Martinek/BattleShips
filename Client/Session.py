@@ -1,4 +1,4 @@
-import socket, time
+import socket, time, os
 from queue import Queue, Empty
 import threading
 import logging
@@ -9,6 +9,9 @@ import enum, typing
 from Shared import ConnectionPrimitives
 from Shared.Enums import COM
 from Shared.Helpers import runFuncLogged
+
+SERVER_ADDRES = ('192.168.0.159', 1250)
+
 
 # helpers
 AnyT = typing.TypeVar('AnyT')
@@ -27,7 +30,12 @@ class Request:
 	conn: socket.socket=None
 	state: int=0 # 0 waiting, 1 sent, 2 received
 
-SERVER_ADDRES = ('192.168.0.159', 1250)
+LOCAL_SERVER_ADDR_PATH = 'logs/LAN_server_addr.txt'
+if os.path.exists(LOCAL_SERVER_ADDR_PATH):
+	with open(LOCAL_SERVER_ADDR_PATH, 'r') as f:
+		addr = f.read().strip()
+	SERVER_ADDRES = addr.split(':')[0], int(addr.split(':')[1])
+	logging.info('Server address read from file:', SERVER_ADDRES)
 
 class Session:
 	def __init__(self):
@@ -172,4 +180,5 @@ class Session:
 		assert self.id == id or not self.connected, 'The received id is not my id'
 	def _newServerSocket(self, req: Request):
 		req.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		req.conn.settimeout(1)
 		req.conn.connect(SERVER_ADDRES)
