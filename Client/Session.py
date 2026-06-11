@@ -10,7 +10,18 @@ from Shared import ConnectionPrimitives
 from Shared.Enums import COM
 from Shared.Helpers import runFuncLogged
 
+
+# --------------------------------- #
 SERVER_ADDRES = ('192.168.0.159', 1250)
+CONNECT_TO_LAN = True
+# --------------------------------- #
+
+LOCAL_SERVER_ADDR_PATH = 'logs/LAN_server_addr.txt'
+if CONNECT_TO_LAN and os.path.exists(LOCAL_SERVER_ADDR_PATH):
+	with open(LOCAL_SERVER_ADDR_PATH, 'r') as f:
+		addr = f.read().strip()
+	SERVER_ADDRES = addr.split(':')[0], int(addr.split(':')[1])
+	logging.info('Server address read from file:', SERVER_ADDRES)
 
 
 # helpers
@@ -29,13 +40,6 @@ class Request:
 	blocking: bool
 	conn: socket.socket=None
 	state: int=0 # 0 waiting, 1 sent, 2 received
-
-LOCAL_SERVER_ADDR_PATH = 'logs/LAN_server_addr.txt'
-if os.path.exists(LOCAL_SERVER_ADDR_PATH):
-	with open(LOCAL_SERVER_ADDR_PATH, 'r') as f:
-		addr = f.read().strip()
-	SERVER_ADDRES = addr.split(':')[0], int(addr.split(':')[1])
-	logging.info('Server address read from file:', SERVER_ADDRES)
 
 class Session:
 	def __init__(self):
