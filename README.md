@@ -1,30 +1,31 @@
 # BattleShips
 
-## About
-BattleShips is my first attempt to make an online game. It is a copy of the pen and pencil game called BattleShips, in Czech known as 'Lodě'. 
-Currently it's work in progress.<br>
-This is a picture of what the game looks like right now:
+BattleShips is an attempt to make an online multiplayer game.  
+It is a copy of the pen and pencil game called BattleShips, in Czech known as *Lodě*. 
+  
 ![Screenshot](Screenshot.png)
 
 ## Requirements
-You need python version 3.9 or compatible and pygame installed.
-For running the game you will need to be on the same local network as the server is, but internet access is not needed.
-It should be possinble to have the server on a different network, but I haven't tested it yet.
+- python 3.9 or compatible
+- pygame `pip install pygame`
 
 ## Running
 You need to start exactly one server instance and then you can start as many clients as you wish.
+
+- if on same LAN as the server - internet access is not needed.
+
 ```cmd
 ServerMain.py
 BattleShips.py
 BattleShips.py
 BattleShips.py
 ```
-
-Once you start the server a message like this will pop up:
+**If client is crashing after entering game** (blank screen) - connection error
+- Check server address:
 ```cmd
 INFO:root:server ready and listening at 192.168.0.159:1250
 ```
-You will need to make sure that the SERVER_ADDRES constant above the Session class in [./Client/Session.py](./Client/Session.py) is the same as the server address reported in the message.
+- make sure SERVER_ADDRES constant atop [./Client/Session.py](./Client/Session.py) is the same as the server address reported in the message.
 
 ## Controls
 #### LMB
