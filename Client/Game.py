@@ -159,6 +159,7 @@ class Game:
 		elif gameEndMsg and self.gameStage not in [STAGES.GAME_END, STAGES.END_GRID_SHOW]: # NOTE unstandard game end
 			logging.warning(f"Server commanded disconnect: '{gameEndMsg}'")
 			self.options.gameEndMsg = gameEndMsg
+			self.options.rematchPossible = False
 			if opponentState is not None and 'ships' in opponentState: self.opponentGrid.updateAfterGameEnd(opponentState)
 			self.newGameStage(STAGES.GAME_END)
 	def spawnReqs(self):
